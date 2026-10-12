@@ -26,11 +26,11 @@ export function SettingsPanelHead({
       )}
     >
       <div className="min-w-0">
-        <h2 className="text-lg font-semibold tracking-tight text-foreground">
+        <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
           {title}
         </h2>
         {description ? (
-          <p className="mt-1 max-w-[62ch] text-sm text-muted-foreground">
+          <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
             {description}
           </p>
         ) : null}
