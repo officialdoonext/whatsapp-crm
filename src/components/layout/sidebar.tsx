@@ -174,10 +174,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       <Link
         href={item.href}
         className={cn(
-          "flex items-center gap-2.5 rounded-md text-xs font-medium transition-colors relative",
+          "flex items-center gap-2.5 rounded-md text-[13.5px] font-medium transition-colors relative",
           collapsed
             ? "size-9 justify-center p-0 mx-auto"
-            : "w-full px-2.5 py-2",
+            : "w-full px-2.5 py-1.5",
           isActive
             ? "bg-muted text-foreground font-semibold"
             : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
@@ -189,7 +189,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <>
             <span className="flex-1 truncate">{label}</span>
             {item.beta && (
-              <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1 py-0.2 text-[9px] font-bold uppercase tracking-wider text-amber-500">
+              <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider text-amber-500">
                 BETA
               </span>
             )}
@@ -247,7 +247,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex h-full flex-col border-r border-border bg-background transition-all duration-200 ease-in-out",
           // Mobile drawer
-          open ? "translate-x-0 w-60" : "-translate-x-full",
+          open ? "translate-x-0 w-56" : "-translate-x-full",
           // Desktop static rail
           "lg:static lg:z-0 lg:translate-x-0",
           collapsed ? "lg:w-13" : "lg:w-56",
@@ -282,9 +282,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
           {/* Account name display (expanded only) */}
           {!collapsed && showAccountStrip && account?.name ? (
-            <div className="mt-2 flex items-center gap-1.5 px-2 py-1 text-[11px] text-muted-foreground">
-              <UsersRound className="size-3.5 shrink-0" />
-              <span className="truncate" title={account.name}>
+            <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground">
+              <UsersRound className="size-4 shrink-0" />
+              <span className="truncate font-medium" title={account.name}>
                 {account.name}
               </span>
               {accountRole ? (
@@ -293,9 +293,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                   const ChipIcon = meta.icon;
                   return (
                     <span
-                      className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded border px-1 py-0.2 text-[9px] font-bold uppercase tracking-wider ${meta.className}`}
+                      className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${meta.className}`}
                     >
-                      <ChipIcon className="size-2.5" />
+                      <ChipIcon className="size-3" />
                       {t(meta.labelKey as string)}
                     </span>
                   );
@@ -311,7 +311,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             type="button"
             onClick={toggleCollapsed}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors mx-auto"
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors mx-auto cursor-pointer"
           >
             {collapsed ? (
               <ChevronRight className="size-3.5" />
