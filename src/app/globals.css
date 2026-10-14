@@ -309,3 +309,15 @@ html[data-theme="rose"] {
   background-color: #ffffff !important;
   color: #111b21 !important;
 }
+
+/* Hide scrollbars while preserving scroll capability */
+.scrollbar-hidden {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
