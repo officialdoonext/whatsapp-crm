@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 export default function LoginPage() {
   return (
@@ -58,7 +59,6 @@ function LoginPageInner() {
   const [isInstallable, setIsInstallable] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [iosModalOpen, setIosModalOpen] = useState(false);
-  const [desktopHintOpen, setDesktopHintOpen] = useState(false);
 
   useEffect(() => {
     // Check if already running in standalone PWA mode
@@ -83,6 +83,7 @@ function LoginPageInner() {
     const onAppInstalled = () => {
       setIsStandalone(true);
       setIsInstallable(false);
+      window.__pwaPrompt = null;
     };
 
     window.addEventListener("pwa-prompt-available", onPromptAvailable);
@@ -95,20 +96,52 @@ function LoginPageInner() {
   }, []);
 
   const handleInstallClick = async () => {
+    // 1. If native prompt event is ready, prompt immediately
     if (window.__pwaPrompt) {
       const promptEvent = window.__pwaPrompt;
-      promptEvent.prompt();
-      const choiceResult = await promptEvent.userChoice;
-      if (choiceResult.outcome === "accepted") {
-        setIsStandalone(true);
-        setIsInstallable(false);
+      try {
+        await promptEvent.prompt();
+        const choiceResult = await promptEvent.userChoice;
+        if (choiceResult && choiceResult.outcome === "accepted") {
+          setIsStandalone(true);
+          setIsInstallable(false);
+        }
+      } catch (err) {
+        console.error("Install prompt error:", err);
       }
       window.__pwaPrompt = null;
-    } else if (isIOS) {
-      setIosModalOpen(true);
-    } else {
-      setDesktopHintOpen(true);
+      return;
     }
+
+    // 2. If on iOS (Safari doesn't support programmatic beforeinstallprompt)
+    if (isIOS) {
+      setIosModalOpen(true);
+      return;
+    }
+
+    // 3. For Windows & Android: If event is still buffering, wait up to 1.5s and prompt immediately
+    let waited = 0;
+    const interval = setInterval(async () => {
+      waited += 150;
+      if (window.__pwaPrompt) {
+        clearInterval(interval);
+        const p = window.__pwaPrompt;
+        window.__pwaPrompt = null;
+        try {
+          await p.prompt();
+          const choice = await p.userChoice;
+          if (choice && choice.outcome === "accepted") {
+            setIsStandalone(true);
+            setIsInstallable(false);
+          }
+        } catch (e) {
+          console.error("Install prompt error:", e);
+        }
+      } else if (waited >= 1200) {
+        clearInterval(interval);
+        toast.info("Click the install icon in your browser address bar to install WACRM.");
+      }
+    }, 150);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -326,35 +359,6 @@ function LoginPageInner() {
             className="w-full h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
           >
             Got it
-          </Button>
-        </DialogContent>
-      </Dialog>
-
-      {/* Desktop / Generic Browser Install Guide */}
-      <Dialog open={desktopHintOpen} onOpenChange={setDesktopHintOpen}>
-        <DialogContent className="max-w-xs sm:max-w-sm rounded-2xl bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-base font-semibold flex items-center gap-2 text-foreground">
-              <Download className="size-5 text-emerald-500" />
-              Install WACRM on Desktop
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground pt-1">
-              To install WACRM as a desktop application:
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2 py-2 text-xs text-muted-foreground">
-            <p className="text-foreground">
-              Click the <strong className="text-emerald-500">Install icon (⊞ or ⬇)</strong> on the right side of your browser&apos;s address bar, or click your browser menu (⋮) and select <strong className="text-emerald-500">&quot;Install WACRM&quot;</strong>.
-            </p>
-          </div>
-
-          <Button
-            type="button"
-            onClick={() => setDesktopHintOpen(false)}
-            className="w-full h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
-          >
-            Understood
           </Button>
         </DialogContent>
       </Dialog>

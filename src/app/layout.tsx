@@ -128,6 +128,25 @@ export default async function RootLayout({
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
         />
+        <Script
+          id="pwa-boot"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.__pwaPrompt = null;
+              window.addEventListener('beforeinstallprompt', function(e) {
+                e.preventDefault();
+                window.__pwaPrompt = e;
+                window.dispatchEvent(new CustomEvent('pwa-prompt-available'));
+              });
+              window.addEventListener('appinstalled', function() {
+                window.__pwaPrompt = null;
+                window.dispatchEvent(new CustomEvent('pwa-installed'));
+              });
+            `,
+          }}
+        />
+        <link rel="manifest" href="/manifest.json" />
       </head>
       <body className="min-h-full bg-background text-foreground font-sans">
         <NextIntlClientProvider messages={messages} locale={locale}>
