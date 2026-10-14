@@ -20,6 +20,7 @@ import {
   isAccountRole,
   type AccountRole,
 } from "@/lib/auth/roles";
+import { checkUserAccess } from "@/lib/auth/user-status";
 
 interface Profile {
   id: string;
@@ -35,6 +36,8 @@ interface Profile {
   beta_features: string[];
   account_id: string | null;
   account_role: AccountRole | null;
+  status: string | null;
+  expiry_date: string | null;
 }
 
 interface AccountSummary {
@@ -130,6 +133,11 @@ interface AuthContextValue {
   canEditSettings: boolean;
   /** True if the caller can send messages and edit operational data (agent+). */
   canSendMessages: boolean;
+  /** Whether the user meets active status and unexpired subscription requirements. */
+  canAccessApp: boolean;
+  accessReason: string | null;
+  status: string | null;
+  expiryDate: string | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -152,6 +160,8 @@ interface ProfileRow {
   beta_features: string[] | null;
   account_id: string | null;
   account_role: string | null;
+  status?: string | null;
+  expiry_date?: string | null;
 }
 
 /**
@@ -192,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await supabase
           .from("profiles")
           .select(
-            "id, full_name, email, avatar_url, role, beta_features, account_id, account_role",
+            "id, full_name, email, avatar_url, role, beta_features, account_id, account_role, status, expiry_date",
           )
           .eq("user_id", userId)
           .maybeSingle();
@@ -280,6 +290,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           beta_features: data.beta_features ?? [],
           account_id: data.account_id ?? null,
           account_role: accountRole,
+          status: data.status ?? null,
+          expiry_date: data.expiry_date ?? null,
         });
         setAccount(accountRow);
         if (!data.account_id || !accountRole) {
@@ -425,6 +437,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? "ready"
           : "unlinked";
 
+  // Compute CRM access permission based on active status and unexpired subscription
+  const accessResult = useMemo(() => {
+    return checkUserAccess(user, profile);
+  }, [user, profile]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -438,6 +455,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
         accountStatus,
         accountStatusDetail: statusDetail,
+        canAccessApp: accessResult.isAllowed,
+        accessReason: accessResult.reason,
+        status: accessResult.status,
+        expiryDate: accessResult.expiryDate,
         ...derived,
       }}
     >
@@ -481,6 +502,10 @@ export function useAuth(): AuthContextValue {
       canManageMembers: false,
       canEditSettings: false,
       canSendMessages: false,
+      canAccessApp: false,
+      accessReason: "unauthenticated",
+      status: null,
+      expiryDate: null,
     };
   }
   return ctx;

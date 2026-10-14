@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
+import { checkUserAccess } from "@/lib/auth/user-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -149,7 +150,7 @@ function LoginPageInner() {
     setError(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: signInData, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -158,6 +159,27 @@ function LoginPageInner() {
       setError(error.message);
       setLoading(false);
       return;
+    }
+
+    if (signInData?.user) {
+      // Check user status and expiry
+      let profileData = null;
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("status, expiry_date")
+          .eq("user_id", signInData.user.id)
+          .maybeSingle();
+        profileData = data;
+      } catch {
+        // fallback to metadata
+      }
+
+      const access = checkUserAccess(signInData.user, profileData);
+      if (!access.isAllowed) {
+        window.location.href = `/onboarding?reason=${encodeURIComponent(access.reason || "inactive")}&email=${encodeURIComponent(email)}`;
+        return;
+      }
     }
 
     const destination = inviteToken

@@ -30,6 +30,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import { hasMinRole, isAccountRole, type AccountRole } from "./roles";
+import { checkUserAccess } from "./user-status";
 import { getT } from "@/lib/i18n/translate";
 
 const t = getT("LibErrors.auth");
@@ -119,7 +120,7 @@ export async function getCurrentAccount(): Promise<AccountContext> {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("account_id, account_role")
+    .select("account_id, account_role, status, expiry_date")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -138,6 +139,11 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     // migration that broadens the enum without updating TS would
     // hit this — surface it rather than silently widening.
     throw new ForbiddenError(`Unknown account role: ${data.account_role}`);
+  }
+
+  const access = checkUserAccess(user, data as unknown as { status?: string; expiry_date?: string });
+  if (!access.isAllowed && (user.user_metadata?.status !== undefined || (data as unknown as { status?: string }).status !== undefined)) {
+    throw new ForbiddenError(access.message);
   }
 
   // Load the account with a plain point lookup by id rather than an

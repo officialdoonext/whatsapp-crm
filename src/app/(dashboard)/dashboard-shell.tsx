@@ -15,7 +15,7 @@ import { BrowserNotificationsListener } from "@/components/notifications/browser
 // client components can't export Next's metadata object.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, profileLoading, canAccessApp, accessReason } = useAuth();
   const router = useRouter();
   const t = useTranslations("DashboardShell");
 
@@ -27,10 +27,12 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
+    } else if (!loading && !profileLoading && user && !canAccessApp) {
+      router.push(`/onboarding?reason=${encodeURIComponent(accessReason || "inactive")}`);
     }
-  }, [user, loading, router]);
+  }, [user, loading, profileLoading, canAccessApp, accessReason, router]);
 
-  if (loading) {
+  if (loading || (user && profileLoading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
@@ -41,7 +43,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) return null;
+  if (!user || !canAccessApp) return null;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">

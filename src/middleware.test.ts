@@ -112,6 +112,41 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     expect(res.headers.get("location")).toBeNull();
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });
+
+  it("redirects an inactive user to /onboarding?reason=inactive", async () => {
+    mockUser = {
+      id: "user-1",
+      user_metadata: { status: "inactive" },
+    } as unknown as { id: string };
+    refreshedCookies = [ROTATED];
+
+    const res = await middleware(
+      new NextRequest("https://app.test/dashboard"),
+    );
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/onboarding");
+    expect(res.headers.get("location")).toContain("reason=inactive");
+  });
+
+  it("redirects an expired user to /onboarding?reason=expired", async () => {
+    mockUser = {
+      id: "user-1",
+      user_metadata: {
+        status: "active",
+        expiry_date: "2020-01-01T00:00:00.000Z",
+      },
+    } as unknown as { id: string };
+    refreshedCookies = [ROTATED];
+
+    const res = await middleware(
+      new NextRequest("https://app.test/inbox"),
+    );
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/onboarding");
+    expect(res.headers.get("location")).toContain("reason=expired");
+  });
 });
 
 describe("middleware — every dashboard route requires a session", () => {

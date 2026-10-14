@@ -78,12 +78,14 @@ function SignupPageInner() {
       : "/dashboard";
     const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: fullName,
+          status: "inactive",
+          expiry_date: null,
         },
         emailRedirectTo,
       },
@@ -95,8 +97,18 @@ function SignupPageInner() {
       return;
     }
 
-    setSuccess(true);
-    setLoading(false);
+    // Requirement: "once acount created dont login directly"
+    // If Supabase returned a session, clear it immediately
+    if (signUpData?.session) {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // ignore
+      }
+    }
+
+    // Redirect to onboarding page showing inactive status and administrator contact
+    window.location.href = `/onboarding?reason=inactive&email=${encodeURIComponent(email)}`;
   };
 
   if (success) {
