@@ -321,3 +321,27 @@ html[data-theme="rose"] {
   width: 0 !important;
   height: 0 !important;
 }
+
+/* Custom 2px scrollbar */
+.scrollbar-2px {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.scrollbar-2px::-webkit-scrollbar {
+  width: 2px !important;
+  height: 2px !important;
+}
+
+.scrollbar-2px::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.scrollbar-2px::-webkit-scrollbar-thumb {
+  background: var(--border) !important;
+  border-radius: 9999px !important;
+}
+
+.scrollbar-2px::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground) !important;
+}

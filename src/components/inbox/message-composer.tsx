@@ -22,6 +22,7 @@ import {
   Plus,
   MessageSquareDashed,
   Zap,
+  Smile,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -31,6 +32,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -131,6 +137,51 @@ function formatDuration(seconds: number): string {
  *  Meta-accepted format means no server ffmpeg / transcode step. */
 const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 
+/** Curated emoji categories for the composer emoji picker. */
+const EMOJI_CATEGORIES = [
+  {
+    name: "Smileys",
+    icon: "😀",
+    emojis: [
+      "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇",
+      "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚",
+      "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫", "🤔",
+      "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "🤥",
+      "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🤢", "🤮", "🤧",
+      "🥵", "🥶", "🥴", "😵", "🤯", "🤠", "🥳", "😎", "🤓", "🧐",
+    ],
+  },
+  {
+    name: "Gestures",
+    icon: "👍",
+    emojis: [
+      "👍", "👎", "👌", "🤌", "✌️", "🤞", "🫰", "🤟", "🤘", "🤙",
+      "👈", "👉", "👆", "👇", "☝️", "👋", "🤚", "🖐️", "✋", "🖖",
+      "👏", "🙌", "🫶", "👐", "🤲", "🤝", "🙏", "✍️", "💪", "👊",
+      "✊", "🤛", "🤜", "👁️", "👀", "🧠", "👄", "👅", "👃", "👂",
+    ],
+  },
+  {
+    name: "Hearts & Symbols",
+    icon: "❤️",
+    emojis: [
+      "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔",
+      "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "✨", "⭐",
+      "🌟", "⚡", "🔥", "💥", "💯", "🎉", "🎊", "🎯", "🏆", "🥇",
+      "✅", "❌", "⚠️", "❗", "❓", "💬", "💭", "📢", "🔔", "💡",
+    ],
+  },
+  {
+    name: "Objects & Nature",
+    icon: "☕",
+    emojis: [
+      "☕", "🍕", "🍔", "🍟", "🍦", "🍰", "🍎", "🌸", "🌹", "🌻",
+      "☀️", "🌙", "🌈", "🌧️", "❄️", "🚗", "✈️", "🚀", "📱", "💻",
+      "✉️", "📦", "🎁", "🎂", "🎈", "🛒", "💰", "💵", "🕒", "⏳",
+    ],
+  },
+];
+
 export function MessageComposer({
   conversationId,
   sessionExpired,
@@ -147,6 +198,9 @@ export function MessageComposer({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Interactive-message builder dialog + quick-reply picker.
@@ -251,6 +305,28 @@ export function MessageComposer({
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setText(e.target.value);
       adjustHeight();
+    },
+    [adjustHeight]
+  );
+
+  const insertEmoji = useCallback(
+    (emoji: string) => {
+      const el = textareaRef.current;
+      if (!el) {
+        setText((prev) => prev + emoji);
+        return;
+      }
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? el.value.length;
+      const currentVal = el.value;
+      const newVal = currentVal.substring(0, start) + emoji + currentVal.substring(end);
+      setText(newVal);
+      requestAnimationFrame(() => {
+        adjustHeight();
+        el.focus();
+        const newPos = start + emoji.length;
+        el.setSelectionRange(newPos, newPos);
+      });
     },
     [adjustHeight]
   );
@@ -632,137 +708,241 @@ export function MessageComposer({
           </Button>
         </div>
       ) : (
-        <div className="flex items-end gap-2">
-          {/* Attach menu — photo / video / document / voice. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
+        <div className="flex items-end gap-1.5 sm:gap-2">
+          {/* + menu — opens popover with all features */}
+          <Popover open={plusOpen} onOpenChange={setPlusOpen}>
+            <PopoverTrigger
               disabled={inputsDisabled || busy}
-              title={
-                readOnly
-                  ? t("readOnlyTitle")
-                  : inputsDisabled
-                    ? undefined
-                    : t("attachMedia")
-              }
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              title={readOnly ? t("readOnlyTitle") : t("moreActions")}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
-                <Paperclip className="h-4 w-4" />
+                <Plus className="h-5 w-5" />
               )}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
-                <ImageIcon className="mr-2 h-4 w-4" />
-                {t("photo")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => videoInputRef.current?.click()}>
-                <Video className="mr-2 h-4 w-4" />
-                {t("video")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
-                <FileText className="mr-2 h-4 w-4" />
-                {t("document")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void startRecording()}>
-                <Mic className="mr-2 h-4 w-4" />
-                {t("voiceNote")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* + menu — interactive messages + quick replies. Gated on the
-              24h window like free-form text (interactive requires it). */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              disabled={inputsDisabled}
-              title={
-                readOnly
-                  ? t("readOnlyTitle")
-                  : inputsDisabled
-                    ? undefined
-                    : t("moreActions")
-              }
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="start"
+              sideOffset={8}
+              className="w-56 p-1.5 shadow-lg border border-border bg-popover rounded-xl"
             >
-              <Plus className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem onClick={() => openInteractiveBuilder()}>
-                <MessageSquareDashed className="mr-2 h-4 w-4" />
-                {t("interactiveMessage")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setQuickReplyOpen(true)}>
-                <Zap className="mr-2 h-4 w-4" />
-                {t("quickReplies")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <div className="flex flex-col gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusOpen(false);
+                    imageInputRef.current?.click();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                    <ImageIcon className="h-4 w-4" />
+                  </span>
+                  <span className="font-medium">{t("photo")}</span>
+                </button>
 
-          <GatedButton
-            variant="ghost"
-            size="sm"
-            canAct={!readOnly}
-            gateReason={tGate("reasons.sendMessages")}
-            title={readOnly ? undefined : t("sendTemplate")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-            onClick={onOpenTemplates}
-          >
-            <LayoutTemplate className="h-4 w-4" />
-          </GatedButton>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusOpen(false);
+                    videoInputRef.current?.click();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-500/10 text-pink-600 dark:text-pink-400">
+                    <Video className="h-4 w-4" />
+                  </span>
+                  <span className="font-medium">{t("video")}</span>
+                </button>
 
-          <GatedButton
-            variant="ghost"
-            size="sm"
-            canAct={!readOnly}
-            gateReason={tGate("reasons.sendMessages")}
-            disabled={drafting}
-            title={readOnly ? undefined : t("draftWithAI")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-primary"
-            onClick={handleDraft}
-          >
-            {drafting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-          </GatedButton>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusOpen(false);
+                    documentInputRef.current?.click();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                    <FileText className="h-4 w-4" />
+                  </span>
+                  <span className="font-medium">{t("document")}</span>
+                </button>
 
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              readOnly
-                ? t("readOnlyPlaceholder")
-                : sessionExpired
-                  ? t("sessionExpiredPlaceholder")
-                  : t("typeMessagePlaceholder")
-            }
-            disabled={sessionExpired || readOnly}
-            rows={1}
-            // Textarea keeps its own inline title — the GatedButton
-            // wrapping pattern doesn't apply to non-button inputs.
-            // The placeholder text also surfaces the read-only state.
-            title={readOnly ? t("readOnlyTitle") : undefined}
-            className={cn(
-              "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
-            )}
-          />
+                <button
+                  type="button"
+                  disabled={readOnly}
+                  onClick={() => {
+                    setPlusOpen(false);
+                    onOpenTemplates();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <LayoutTemplate className="h-4 w-4" />
+                  </span>
+                  <span className="font-medium">{t("templates")}</span>
+                </button>
 
-          <GatedButton
-            size="sm"
-            canAct={!readOnly}
-            gateReason={tGate("reasons.sendMessages")}
-            disabled={!text.trim() || sessionExpired || sending}
-            onClick={handleSend}
-            className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
-          >
-            <Send className="h-4 w-4" />
-          </GatedButton>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusOpen(false);
+                    setQuickReplyOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <Zap className="h-4 w-4" />
+                  </span>
+                  <span className="font-medium">{t("quickReplies")}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusOpen(false);
+                    openInteractiveBuilder();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+                    <MessageSquareDashed className="h-4 w-4" />
+                  </span>
+                  <span className="font-medium">{t("interactiveMessage")}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={readOnly || drafting}
+                  onClick={() => {
+                    setPlusOpen(false);
+                    handleDraft();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                    {drafting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                  </span>
+                  <span className="font-medium">{t("draftWithAI")}</span>
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Emoji button — opens emoji picker */}
+          <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+            <PopoverTrigger
+              disabled={sessionExpired || readOnly}
+              title="Emoji"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Smile className="h-5 w-5" />
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="start"
+              sideOffset={8}
+              className="w-[320px] h-[300px] p-2.5 shadow-2xl border border-border bg-popover/95 backdrop-blur-md rounded-2xl flex flex-col overflow-hidden"
+            >
+              <div className="flex items-center gap-1 border-b border-border/60 pb-1.5 mb-1.5 shrink-0 px-0.5">
+                {EMOJI_CATEGORIES.map((cat, idx) => (
+                  <button
+                    key={cat.name}
+                    type="button"
+                    onClick={() => setActiveEmojiCategory(idx)}
+                    className={cn(
+                      "flex h-8 flex-1 items-center justify-center rounded-lg text-lg transition-all",
+                      activeEmojiCategory === idx
+                        ? "bg-muted shadow-xs font-bold scale-105"
+                        : "hover:bg-muted/60 opacity-70 hover:opacity-100"
+                    )}
+                    title={cat.name}
+                  >
+                    {cat.icon}
+                  </button>
+                ))}
+              </div>
+              <div
+                className="flex-1 min-h-0 overflow-y-auto scrollbar-2px pr-1"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(8, minmax(0, 1fr))",
+                  gap: "4px",
+                }}
+              >
+                {EMOJI_CATEGORIES[activeEmojiCategory].emojis.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => insertEmoji(emoji)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted text-xl transition-transform hover:scale-115 active:scale-90"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Input container with Mic/Send inside right side */}
+          <div className="flex flex-1 items-end rounded-2xl border border-border bg-muted/60 transition-colors focus-within:border-primary/50 focus-within:bg-background px-3 py-1.5 gap-2 min-h-[44px]">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                readOnly
+                  ? t("readOnlyPlaceholder")
+                  : sessionExpired
+                    ? t("sessionExpiredPlaceholder")
+                    : t("typeMessagePlaceholder")
+              }
+              disabled={sessionExpired || readOnly}
+              rows={1}
+              title={readOnly ? t("readOnlyTitle") : undefined}
+              className={cn(
+                "flex-1 min-w-0 resize-none bg-transparent py-1 text-sm text-foreground placeholder:text-muted-foreground outline-none",
+                (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+              )}
+            />
+
+            {/* Mic symbol when empty; Send button when message entered */}
+            <div className="shrink-0 flex items-center justify-center pb-0.5">
+              {text.trim() ? (
+                <button
+                  type="button"
+                  disabled={sessionExpired || sending || readOnly}
+                  onClick={handleSend}
+                  title={readOnly ? t("readOnlyTitle") : t("send")}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 transition-all disabled:opacity-40 cursor-pointer"
+                >
+                  {sending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4 ml-0.5" />
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={inputsDisabled || busy}
+                  onClick={() => void startRecording()}
+                  title={readOnly ? t("readOnlyTitle") : t("voiceNote")}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-all disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -770,7 +950,7 @@ export function MessageComposer({
           `items-end` buttons below the textarea. Indented to line up
           under the textarea left edge. */}
       {!draft && !recording && (
-        <p className="mt-1 pl-[5.5rem] text-[10px] text-muted-foreground">
+        <p className="mt-1 pl-20 sm:pl-24 text-[10px] text-muted-foreground">
           {t("draftHint")}
         </p>
       )}
