@@ -16,6 +16,7 @@ import {
   HelpCircle,
   UserPlus,
   FileText,
+  BarChart3,
 } from "lucide-react";
 
 import { useTranslations } from "next-intl";
@@ -236,6 +237,7 @@ export default function FlowsPage() {
             <FlowCard
               key={flow.id}
               flow={flow}
+              onAnalytics={() => router.push(`/flows/${flow.id}/analytics`)}
               onEdit={() => router.push(`/flows/${flow.id}`)}
               onDelete={() => handleDelete(flow)}
               t={t}
@@ -360,11 +362,13 @@ function EmptyState({
 
 function FlowCard({
   flow,
+  onAnalytics,
   onEdit,
   onDelete,
   t,
 }: {
   flow: FlowRow;
+  onAnalytics: () => void;
   onEdit: () => void;
   onDelete: () => void;
   t: ReturnType<typeof useTranslations>;
@@ -408,20 +412,31 @@ function FlowCard({
         </span>
       </div>
 
-      <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-3">
-        <Button variant="ghost" size="sm" onClick={onEdit}>
-          <Pencil className="h-3.5 w-3.5" />
-          {t("edit")}
-        </Button>
+      <div className="mt-4 flex items-center justify-between gap-2 border-t border-border pt-3">
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          onClick={onDelete}
-          className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          onClick={onAnalytics}
+          className="gap-1.5 text-xs font-medium hover:border-primary/50"
         >
-          <Trash2 className="h-3.5 w-3.5" />
-          {t("delete")}
+          <BarChart3 className="h-3.5 w-3.5 text-primary" />
+          Analytics
         </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={onEdit}>
+            <Pencil className="h-3.5 w-3.5" />
+            {t("edit")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {t("delete")}
+          </Button>
+        </div>
       </div>
     </div>
   );

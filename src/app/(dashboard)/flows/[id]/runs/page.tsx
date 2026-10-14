@@ -13,12 +13,14 @@ import {
   PauseCircle,
   ChevronDown,
   ChevronRight,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -178,10 +180,23 @@ export default function FlowRunsPage() {
         <ArrowLeft className="h-3 w-3" />
         {flow.name}
       </button>
-      <h1 className="text-xl font-semibold text-foreground">{t("title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {t("description")}
-      </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">{t("title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("description")}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push(`/flows/${flow.id}/analytics`)}
+          className="gap-1.5 self-start text-xs sm:self-auto"
+        >
+          <BarChart3 className="h-3.5 w-3.5 text-primary" />
+          Collected Leads & Analytics
+        </Button>
+      </div>
 
       {runs.length === 0 ? (
         <div className="mt-6 rounded-lg border border-dashed border-border bg-card/50 px-6 py-12 text-center text-sm text-muted-foreground">

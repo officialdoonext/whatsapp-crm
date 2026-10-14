@@ -87,3 +87,118 @@ export async function GET(
     events,
   })
 }
+
+/**
+ * PATCH /api/flows/[id]/runs
+ * Update lead_status ('new' | 'contacted') inside flow_runs.vars.
+ */
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: t('common.unauthorized') }, { status: 401 })
+  }
+
+  const { data: flow } = await supabase
+    .from('flows')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!flow) {
+    return NextResponse.json({ error: t('common.notFound') }, { status: 404 })
+  }
+
+  const body = await request.json().catch(() => null)
+  const { runId, lead_status } = body ?? {}
+  if (!runId || !['new', 'contacted'].includes(lead_status)) {
+    return NextResponse.json(
+      { error: 'runId and valid lead_status (new, contacted) required' },
+      { status: 400 },
+    )
+  }
+
+  const { supabaseAdmin } = await import('@/lib/flows/admin-client')
+  const admin = supabaseAdmin()
+
+  const { data: run, error: runErr } = await admin
+    .from('flow_runs')
+    .select('id, vars')
+    .eq('id', runId)
+    .eq('flow_id', id)
+    .maybeSingle()
+
+  if (runErr || !run) {
+    return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+  }
+
+  const existingVars = (run.vars as Record<string, unknown>) || {}
+  const updatedVars = { ...existingVars, lead_status }
+
+  const { error: updErr } = await admin
+    .from('flow_runs')
+    .update({ vars: updatedVars })
+    .eq('id', runId)
+
+  if (updErr) {
+    return NextResponse.json({ error: updErr.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, lead_status, vars: updatedVars })
+}
+
+/**
+ * DELETE /api/flows/[id]/runs?runId=...
+ * Delete a flow run and its collected data (cascade deletes flow_run_events).
+ */
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: t('common.unauthorized') }, { status: 401 })
+  }
+
+  const { data: flow } = await supabase
+    .from('flows')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!flow) {
+    return NextResponse.json({ error: t('common.notFound') }, { status: 404 })
+  }
+
+  const { searchParams } = new URL(request.url)
+  const runId = searchParams.get('runId')
+  if (!runId) {
+    return NextResponse.json({ error: 'runId parameter is required' }, { status: 400 })
+  }
+
+  const { supabaseAdmin } = await import('@/lib/flows/admin-client')
+  const admin = supabaseAdmin()
+
+  const { error: delErr } = await admin
+    .from('flow_runs')
+    .delete()
+    .eq('id', runId)
+    .eq('flow_id', id)
+
+  if (delErr) {
+    return NextResponse.json({ error: delErr.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true })
+}
+

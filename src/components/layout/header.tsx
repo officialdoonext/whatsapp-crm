@@ -147,106 +147,11 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             /
           </span>
 
-          {/* Project Selector */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className="hidden sm:flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium text-foreground hover:bg-muted/60 transition-colors focus:outline-none">
-              <span className="truncate max-w-[120px]">My Project</span>
-              <ChevronsUpDown className="size-3 text-muted-foreground/60 shrink-0" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-44 bg-popover border-border">
-              <div className="px-2 py-1.5">
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                  Active Project
-                </p>
-                <p className="text-xs font-semibold text-foreground truncate mt-0.5">
-                  My Project
-                </p>
-              </div>
-              <DropdownMenuSeparator className="bg-border" />
-              <DropdownMenuItem
-                render={
-                  <Link
-                    href="/dashboard"
-                    className="text-xs text-popover-foreground hover:bg-accent"
-                  />
-                }
-              >
-                Project Overview
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Slash divider */}
-          <span className="hidden md:inline text-muted-foreground/30 font-light select-none text-xs">
-            /
-          </span>
-
-          {/* Branch / Production badge */}
-          <div className="hidden md:flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground">
-            <GitBranch className="size-3 text-muted-foreground" />
-            <span className="font-mono text-xs">main</span>
-            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider text-amber-500">
-              PRODUCTION
-            </span>
-            <ChevronsUpDown className="size-3 text-muted-foreground/60 shrink-0" />
-          </div>
-
-          {/* Green Connect Button */}
-          <button
-            type="button"
-            onClick={() => setConnectOpen(true)}
-            className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-xs font-medium shadow-sm transition-colors active:scale-95"
-          >
-            <Plug className="size-3" />
-            <span>Connect</span>
-          </button>
+          
         </div>
 
         {/* Right Section: Feedback + Search + Icons + User */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Feedback */}
-          <button
-            type="button"
-            onClick={() => window.open("https://github.com/ArnasDon/wacrm/issues", "_blank")}
-            className="hidden sm:inline-flex items-center text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1 transition-colors"
-          >
-            Feedback
-          </button>
-
-          {/* Search Trigger */}
-          <button
-            type="button"
-            onClick={() => setSearchOpen(true)}
-            className="flex items-center gap-2 rounded-md border border-border/80 bg-muted/40 hover:bg-muted/70 px-2 sm:px-2.5 py-1 text-xs text-muted-foreground transition-colors cursor-pointer"
-          >
-            <Search className="size-3.5 text-muted-foreground" />
-            <span className="hidden md:inline">Search...</span>
-            <kbd className="hidden sm:inline-flex select-none items-center gap-0.5 rounded border border-border bg-background px-1 py-0.2 font-mono text-[10px] text-muted-foreground">
-              Ctrl K
-            </kbd>
-          </button>
-
-          {/* Help icon */}
-          <button
-            type="button"
-            onClick={() => window.open("https://github.com/ArnasDon/wacrm", "_blank")}
-            title="Documentation & Help"
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <HelpCircle className="size-4" />
-          </button>
-
-          {/* Notification Bell */}
-          <Link
-            href="/notifications"
-            title="Notifications"
-            className="relative flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <Bell className="size-4" />
-            {unreadNotifications > 0 && (
-              <span className="absolute top-1 right-1 size-2 rounded-full bg-emerald-500 animate-pulse" />
-            )}
-          </Link>
 
           {/* Theme Mode Toggle */}
           <ModeToggle className="size-7" />
