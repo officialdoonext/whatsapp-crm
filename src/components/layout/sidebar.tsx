@@ -10,13 +10,13 @@ import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
   Bell,
   Bot,
-  ChevronLeft,
-  ChevronRight,
   Crown,
   GitBranch,
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   Radio,
   Settings,
   Shield,
@@ -77,7 +77,7 @@ const navItems: NavItem[] = [
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
-  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
+  { href: "/flows", labelKey: "flows", icon: Workflow },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
 ];
 
@@ -261,10 +261,52 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             type="button"
             onClick={onClose}
             aria-label={t("closeMenu")}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="flex size-8 items-center justify-center rounded-md border border-border/80 bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground shadow-2xs transition-colors cursor-pointer"
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </button>
+        </div>
+
+        {/* Desktop Sidebar Toggle Header (Close / Open) */}
+        <div
+          className={cn(
+            "hidden lg:flex h-12 shrink-0 items-center border-b border-border px-2.5 transition-all",
+            collapsed ? "justify-center" : "justify-between"
+          )}
+        >
+          {!collapsed ? (
+            <>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 pl-1 select-none">
+                Navigation
+              </span>
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
+                className="flex size-7.5 items-center justify-center rounded-md border border-border/80 bg-muted/50 text-foreground hover:bg-muted hover:text-foreground hover:border-border transition-all shadow-2xs cursor-pointer group"
+              >
+                <PanelLeftClose className="size-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              </button>
+            </>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger render={
+                <button
+                  type="button"
+                  onClick={toggleCollapsed}
+                  title="Expand sidebar"
+                  aria-label="Expand sidebar"
+                  className="flex size-8 items-center justify-center rounded-md border border-border/80 bg-muted/60 text-foreground hover:bg-accent hover:border-emerald-500/60 hover:text-emerald-500 transition-all shadow-2xs cursor-pointer group"
+                >
+                  <PanelLeftOpen className="size-4 text-muted-foreground group-hover:text-emerald-500 transition-colors" />
+                </button>
+              } />
+              <TooltipContent side="right" className="text-xs font-medium">
+                Expand sidebar
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
 
         {/* Primary Navigation list */}
@@ -303,22 +345,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               ) : null}
             </div>
           ) : null}
-        </div>
-
-        {/* Desktop Collapse / Expand toggle button on sidebar border */}
-        <div className="hidden lg:flex shrink-0 items-center justify-end p-2 border-t border-border">
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors mx-auto cursor-pointer"
-          >
-            {collapsed ? (
-              <ChevronRight className="size-3.5" />
-            ) : (
-              <ChevronLeft className="size-3.5" />
-            )}
-          </button>
         </div>
       </aside>
     </TooltipProvider>

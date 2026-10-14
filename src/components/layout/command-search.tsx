@@ -47,7 +47,7 @@ const SEARCH_ITEMS: SearchEntry[] = [
   { title: "Pipelines & Deals", category: "Sales", href: "/pipelines", icon: GitBranch },
   { title: "Broadcast Campaigns", category: "Marketing", href: "/broadcasts", icon: Radio },
   { title: "Automations", category: "Automation", href: "/automations", icon: Zap },
-  { title: "Flows Builder", category: "Automation", href: "/flows", icon: Workflow, badge: "Beta" },
+  { title: "Flows Builder", category: "Automation", href: "/flows", icon: Workflow },
   { title: "AI Reply & Agents", category: "AI", href: "/agents", icon: Bot },
   { title: "General Settings", category: "Settings", href: "/settings?tab=overview", icon: Settings },
   { title: "WhatsApp Cloud API", category: "Settings", href: "/settings?tab=whatsapp", icon: Zap },
