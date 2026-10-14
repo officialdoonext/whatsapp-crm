@@ -123,19 +123,35 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // migration moved both tables to account-scoped tenancy, so the
   // check is the same defense-in-depth as before, just keyed on the
   // new tenancy column.
-  const { data: contact, error: contactErr } = await db
-    .from('contacts')
-    .select('id, phone, wa_user_id')
-    .eq('id', input.contactId)
-    .eq('account_id', input.accountId)
-    .maybeSingle()
+  // Parallelize contact, conversation check, whatsapp config, and template
+  // lookups to eliminate sequential DB round-trip delay before the Meta call.
+  const [contactRes, , configRes, templateRes] = await Promise.all([
+    db
+      .from('contacts')
+      .select('id, phone, wa_user_id')
+      .eq('id', input.contactId)
+      .eq('account_id', input.accountId)
+      .maybeSingle(),
+    assertConversationInAccount(db, input.conversationId, input.accountId),
+    db
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', input.accountId)
+      .single(),
+    input.kind === 'template'
+      ? resolveTemplateRow(
+          db,
+          input.accountId,
+          input.templateName,
+          input.language,
+        )
+      : Promise.resolve({ row: null }),
+  ])
+
+  const { data: contact, error: contactErr } = contactRes
   if (contactErr || !contact) {
     throw new Error(t('send.contactNotFound'))
   }
-
-  // Same for the conversation the message lands in — see
-  // conversation-scope.ts (GHSA-m4fx-g6pr-hrw8).
-  await assertConversationInAccount(db, input.conversationId, input.accountId)
 
   // Phone number, or the business-scoped user ID when Meta has never
   // given us a number for this customer (issue #519).
@@ -147,32 +163,13 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   }
   const sanitized = sendTarget.target
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .single()
+  const { data: config, error: configErr } = configRes
   if (configErr || !config) {
     throw new Error(t('send.notConfigured'))
   }
 
   const accessToken = decrypt(config.access_token)
-
-  // Local template row — read for the body we persist below, not for
-  // the Meta payload (the wire shape is deliberately unchanged here).
-  // A missing row is fine: the send still goes out, we just can't
-  // reconstruct the text the customer saw.
-  const templateRow =
-    input.kind === 'template'
-      ? (
-          await resolveTemplateRow(
-            db,
-            input.accountId,
-            input.templateName,
-            input.language,
-          )
-        ).row
-      : null
+  const templateRow = templateRes.row
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
@@ -233,33 +230,34 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       : templateContentText(templateRow, input.params ?? [])
   const template_name = input.kind === 'template' ? input.templateName : null
 
-  const { error: msgErr } = await db.from('messages').insert({
-    conversation_id: input.conversationId,
-    sender_type: 'bot',
-    content_type,
-    content_text,
-    template_name,
-    message_id: waMessageId,
-    status: 'sent',
-  })
-  if (msgErr) {
+  const [msgRes] = await Promise.all([
+    db.from('messages').insert({
+      conversation_id: input.conversationId,
+      sender_type: 'bot',
+      content_type,
+      content_text,
+      template_name,
+      message_id: waMessageId,
+      status: 'sent',
+    }),
+    db
+      .from('conversations')
+      .update({
+        last_message_text:
+          input.kind === 'template'
+            ? (content_text ?? `[template:${input.templateName}]`)
+            : input.text,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', input.conversationId)
+      .eq('account_id', input.accountId),
+  ])
+  if (msgRes.error) {
     // Meta already has the message; record the DB error but don't pretend
     // the send failed. The engine wraps this in a log line.
-    throw new Error(t('send.dbInsertFailed', { message: msgErr.message }))
+    throw new Error(t('send.dbInsertFailed', { message: msgRes.error.message }))
   }
-
-  await db
-    .from('conversations')
-    .update({
-      last_message_text:
-        input.kind === 'template'
-          ? (content_text ?? `[template:${input.templateName}]`)
-          : input.text,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', input.conversationId)
-    .eq('account_id', input.accountId)
 
   return { whatsapp_message_id: waMessageId }
 }

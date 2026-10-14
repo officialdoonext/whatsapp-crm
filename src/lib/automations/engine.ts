@@ -79,47 +79,46 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     // contact, verify it actually belongs to this account. A foreign or
     // forged id is refused silently — callers are fire-and-forget, and a
     // distinct error would leak whether a given contact UUID exists.
-    if (input.contactId) {
-      const { data: owned, error: ownErr } = await db
-        .from('contacts')
-        .select('id')
-        .eq('id', input.contactId)
-        .eq('account_id', input.accountId)
-        .maybeSingle()
-      if (ownErr) {
-        console.error('[automations] contact ownership check failed:', ownErr)
-        return
-      }
-      if (!owned) {
-        console.warn('[automations] contact not in account, refusing dispatch', input.contactId)
-        return
-      }
+    // Parallelize contact ownership and conversation ownership checks.
+    // Both run in parallel, and automations are only queried if both checks pass.
+    const [ownedRes, convRes] = await Promise.all([
+      input.contactId
+        ? db
+            .from('contacts')
+            .select('id')
+            .eq('id', input.contactId)
+            .eq('account_id', input.accountId)
+            .maybeSingle()
+        : Promise.resolve({ data: { id: null }, error: null }),
+      input.context?.conversation_id
+        ? db
+            .from('conversations')
+            .select('id')
+            .eq('id', input.context.conversation_id)
+            .eq('account_id', input.accountId)
+            .maybeSingle()
+        : Promise.resolve({ data: { id: null }, error: null }),
+    ])
+
+    if (ownedRes.error) {
+      console.error('[automations] contact ownership check failed:', ownedRes.error)
+      return
+    }
+    if (input.contactId && !ownedRes.data) {
+      console.warn('[automations] contact not in account, refusing dispatch', input.contactId)
+      return
     }
 
-    // Same argument for `context.conversation_id` (GHSA-m4fx-g6pr-hrw8).
-    // It rides in on the same caller-supplied body, and every send step
-    // writes a `messages` row and a `conversations` preview update keyed
-    // on it through the service-role client — so an unvalidated id let a
-    // caller inject a message into another tenant's conversation. Refuse
-    // the same way: silently, with no existence oracle.
-    if (input.context?.conversation_id) {
-      const { data: conv, error: convErr } = await db
-        .from('conversations')
-        .select('id')
-        .eq('id', input.context.conversation_id)
-        .eq('account_id', input.accountId)
-        .maybeSingle()
-      if (convErr) {
-        console.error('[automations] conversation ownership check failed:', convErr)
-        return
-      }
-      if (!conv) {
-        console.warn(
-          '[automations] conversation not in account, refusing dispatch',
-          input.context.conversation_id,
-        )
-        return
-      }
+    if (convRes.error) {
+      console.error('[automations] conversation ownership check failed:', convRes.error)
+      return
+    }
+    if (input.context?.conversation_id && !convRes.data) {
+      console.warn(
+        '[automations] conversation not in account, refusing dispatch',
+        input.context.conversation_id,
+      )
+      return
     }
 
     const { data: automations, error } = await db
@@ -128,7 +127,6 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
       .eq('account_id', input.accountId)
       .eq('trigger_type', input.triggerType)
       .eq('is_active', true)
-
     if (error) {
       console.error('[automations] fetch failed:', error)
       return
@@ -450,11 +448,21 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<ScopeOutcome> {
   let errorMessage: string | null = null
 
   for (const step of steps as AutomationStep[]) {
-    // `wait` is the suspension point: enqueue and stop processing this
-    // scope. The cron endpoint will pick it up later.
+    // `wait` is the suspension point: small delays (≤ 10s) run in-process
+    // immediately; larger delays enqueue for the cron pinger.
     if (step.step_type === 'wait') {
       const cfg = step.step_config as WaitStepConfig
       const ms = waitMs(cfg)
+      if (ms <= 10_000) {
+        await new Promise((resolve) => setTimeout(resolve, ms))
+        results.push({
+          step_id: step.id,
+          step_type: step.step_type,
+          status: 'success',
+          detail: `waited ${cfg.amount} ${cfg.unit}`,
+        })
+        continue
+      }
       await db.from('automation_pending_executions').insert({
         automation_id: args.automation.id,
         // Tenancy: account_id required NOT NULL post-017.
@@ -1082,7 +1090,15 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
 }
 
 function waitMs(cfg: WaitStepConfig): number {
-  const unitMs = cfg.unit === 'days' ? 86_400_000 : cfg.unit === 'hours' ? 3_600_000 : 60_000
+  const unit = cfg.unit as string
+  const unitMs =
+    unit === 'days'
+      ? 86_400_000
+      : unit === 'hours'
+        ? 3_600_000
+        : unit === 'seconds'
+          ? 1_000
+          : 60_000
   return Math.max(1_000, cfg.amount * unitMs)
 }
 

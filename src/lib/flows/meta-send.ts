@@ -94,22 +94,22 @@ export async function engineSendText(
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin()
 
-  const { data: contact, error: contactErr } = await db
-    .from('contacts')
-    .select('id, phone, wa_user_id')
-    .eq('id', args.contactId)
-    .eq('account_id', args.accountId)
-    .maybeSingle()
+  const [contactRes, , credentials] = await Promise.all([
+    db
+      .from('contacts')
+      .select('id, phone, wa_user_id')
+      .eq('id', args.contactId)
+      .eq('account_id', args.accountId)
+      .maybeSingle(),
+    assertConversationInAccount(db, args.conversationId, args.accountId),
+    loadAccountMetaCredentials(db, args.accountId),
+  ])
+
+  const { data: contact, error: contactErr } = contactRes
   if (contactErr || !contact) {
     throw new Error(t('send.contactNotFound'))
   }
 
-  // Same for the conversation the message lands in — see
-  // conversation-scope.ts (GHSA-m4fx-g6pr-hrw8).
-  await assertConversationInAccount(db, args.conversationId, args.accountId)
-
-  // Phone number, or the business-scoped user ID when Meta has never
-  // given us a number for this customer (issue #519).
   const sendTarget = resolveContactSendTarget(contact)
   if (!sendTarget) {
     throw new Error(
@@ -117,11 +117,7 @@ export async function engineSendText(
     )
   }
   const sanitized = sendTarget.target
-
-  const { phoneNumberId, accessToken } = await loadAccountMetaCredentials(
-    db,
-    args.accountId,
-  )
+  const { phoneNumberId, accessToken } = credentials
 
   const attempt = async (phone: string): Promise<string> => {
     const r = await sendTextMessage({
@@ -208,22 +204,22 @@ export async function engineSendMedia(
 ): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin()
 
-  const { data: contact, error: contactErr } = await db
-    .from('contacts')
-    .select('id, phone, wa_user_id')
-    .eq('id', args.contactId)
-    .eq('account_id', args.accountId)
-    .maybeSingle()
+  const [contactRes, , credentials] = await Promise.all([
+    db
+      .from('contacts')
+      .select('id, phone, wa_user_id')
+      .eq('id', args.contactId)
+      .eq('account_id', args.accountId)
+      .maybeSingle(),
+    assertConversationInAccount(db, args.conversationId, args.accountId),
+    loadAccountMetaCredentials(db, args.accountId),
+  ])
+
+  const { data: contact, error: contactErr } = contactRes
   if (contactErr || !contact) {
     throw new Error(t('send.contactNotFound'))
   }
 
-  // Same for the conversation the message lands in — see
-  // conversation-scope.ts (GHSA-m4fx-g6pr-hrw8).
-  await assertConversationInAccount(db, args.conversationId, args.accountId)
-
-  // Phone number, or the business-scoped user ID when Meta has never
-  // given us a number for this customer (issue #519).
   const sendTarget = resolveContactSendTarget(contact)
   if (!sendTarget) {
     throw new Error(
@@ -231,11 +227,7 @@ export async function engineSendMedia(
     )
   }
   const sanitized = sendTarget.target
-
-  const { phoneNumberId, accessToken } = await loadAccountMetaCredentials(
-    db,
-    args.accountId,
-  )
+  const { phoneNumberId, accessToken } = credentials
 
   const attempt = async (phone: string): Promise<string> => {
     const r = await sendMediaMessage({
@@ -364,22 +356,22 @@ async function sendInteractiveViaMeta(
   // Scope the contact + whatsapp_config lookups by account_id —
   // same defense-in-depth rationale as automations/meta-send.ts.
   // Migration 017 moved both tables to account-scoped tenancy.
-  const { data: contact, error: contactErr } = await db
-    .from('contacts')
-    .select('id, phone, wa_user_id')
-    .eq('id', input.contactId)
-    .eq('account_id', input.accountId)
-    .maybeSingle()
+  const [contactRes, , credentials] = await Promise.all([
+    db
+      .from('contacts')
+      .select('id, phone, wa_user_id')
+      .eq('id', input.contactId)
+      .eq('account_id', input.accountId)
+      .maybeSingle(),
+    assertConversationInAccount(db, input.conversationId, input.accountId),
+    loadAccountMetaCredentials(db, input.accountId),
+  ])
+
+  const { data: contact, error: contactErr } = contactRes
   if (contactErr || !contact) {
     throw new Error(t('send.contactNotFound'))
   }
 
-  // Same for the conversation the message lands in — see
-  // conversation-scope.ts (GHSA-m4fx-g6pr-hrw8).
-  await assertConversationInAccount(db, input.conversationId, input.accountId)
-
-  // Phone number, or the business-scoped user ID when Meta has never
-  // given us a number for this customer (issue #519).
   const sendTarget = resolveContactSendTarget(contact)
   if (!sendTarget) {
     throw new Error(
@@ -387,11 +379,7 @@ async function sendInteractiveViaMeta(
     )
   }
   const sanitized = sendTarget.target
-
-  const { phoneNumberId, accessToken } = await loadAccountMetaCredentials(
-    db,
-    input.accountId,
-  )
+  const { phoneNumberId, accessToken } = credentials
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'buttons') {

@@ -850,12 +850,13 @@ async function processMessage(
   // separate conditional statement rather than a `status` field on the
   // update above so the write can be gated on the row's CURRENT status in
   // SQL — see the helper for why that matters.
-  await reopenClosedConversation(supabaseAdmin(), conversation)
-
-  // If this contact was a recent broadcast recipient, flag the reply
-  // so the broadcast's `replied_count` advances (via the aggregate
-  // trigger installed in migration 003).
-  await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+  await Promise.all([
+    reopenClosedConversation(supabaseAdmin(), conversation),
+    // If this contact was a recent broadcast recipient, flag the reply
+    // so the broadcast's `replied_count` advances (via the aggregate
+    // trigger installed in migration 003).
+    flagBroadcastReplyIfAny(accountId, contactRecord.id),
+  ])
 
   // ============================================================
   // Flow runner dispatch.
@@ -953,28 +954,26 @@ async function processMessage(
   // listens to only one trigger runs only when that trigger matches.
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
   if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
-  // Awaited — not fire-and-forget. We're inside the route's `after()`
-  // block, which only keeps the function alive for promises it can see, so
-  // a detached dispatch can be frozen part-way through: the log row is
-  // inserted, then the steps never run. That is issue #301's failure mode
-  // recurring one level down, and it's what issue #409 reported as runs
-  // logging zero steps. `runAutomationsForTrigger` owns its own try/catch
-  // and never throws; the `.catch` is belt-and-braces so one trigger
-  // type's failure can't skip the rest of the loop.
-  for (const triggerType of automationTriggers) {
-    await runAutomationsForTrigger({
-      accountId,
-      triggerType,
-      contactId: contactRecord.id,
-      context: {
-        message_text: inboundText,
-        conversation_id: conversation.id,
-        // Only set on interactive taps; drives the interactive_reply
-        // trigger's exact-id match.
-        interactive_reply_id: interactiveReplyId ?? undefined,
-      },
-    }).catch((err) => console.error('[automations] dispatch failed:', err))
-  }
+  // Awaited concurrently — not fire-and-forget. We're inside the route's
+  // `after()` block, which keeps the runtime alive until promises settle.
+  // Running the triggers in parallel via Promise.all avoids sequential DB
+  // round-trip latency, dispatching replies to customer in milliseconds.
+  await Promise.all(
+    automationTriggers.map((triggerType) =>
+      runAutomationsForTrigger({
+        accountId,
+        triggerType,
+        contactId: contactRecord.id,
+        context: {
+          message_text: inboundText,
+          conversation_id: conversation.id,
+          // Only set on interactive taps; drives the interactive_reply
+          // trigger's exact-id match.
+          interactive_reply_id: interactiveReplyId ?? undefined,
+        },
+      }).catch((err) => console.error('[automations] dispatch failed:', err)),
+    ),
+  )
 
   // AI auto-reply. Runs only for plain-text inbound the deterministic
   // flow runner did NOT consume (flows win over the LLM), and only when
