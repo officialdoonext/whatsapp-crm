@@ -6,6 +6,7 @@ import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
+import { PwaRegistrar } from "@/components/pwa/pwa-registrar";
 import {
   DEFAULT_MODE,
   DEFAULT_THEME,
@@ -35,14 +36,24 @@ const metadata: Metadata = {
     default: "wacrm",
     template: "%s — wacrm",
   },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "WACRM",
+  },
   robots: {
     index: false,
     follow: false,
   },
   icons: {
-    icon: [{ url: "/logo.png" }],
+    icon: [
+      { url: "/logo.png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
     shortcut: "/logo.png",
-    apple: "/logo.png",
+    apple: "/apple-touch-icon.png",
   },
   formatDetection: {
     email: false,
@@ -121,6 +132,7 @@ export default async function RootLayout({
       <body className="min-h-full bg-background text-foreground font-sans">
         <NextIntlClientProvider messages={messages} locale={locale}>
           <ThemeProvider>
+            <PwaRegistrar />
             {children}
             <ThemedToaster />
           </ThemeProvider>

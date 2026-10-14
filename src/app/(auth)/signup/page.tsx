@@ -144,20 +144,22 @@ function SignupPageInner() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl">
+          <div className="mb-2 flex items-center justify-center">
             {inviteToken ? (
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                <UsersRound className="h-6 w-6 text-primary" />
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
+                <UsersRound className="size-7 text-primary" />
               </div>
             ) : (
-              <Image
-                src="/logo.png"
-                alt="Logo"
-                width={48}
-                height={48}
-                className="size-12 object-contain rounded-xl"
-                priority
-              />
+              <div className="flex size-16 items-center justify-center rounded-2xl bg-muted/40 border border-border/80 p-2 shadow-2xs">
+                <Image
+                  src="/logo.png"
+                  alt="Logo"
+                  width={56}
+                  height={56}
+                  className="size-12 object-contain"
+                  priority
+                />
+              </div>
             )}
           </div>
           <CardTitle className="text-xl text-foreground">

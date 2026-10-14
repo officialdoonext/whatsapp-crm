@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -10,19 +10,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { MessageSquare, UsersRound } from "lucide-react";
+  Download,
+  Smartphone,
+  CheckCircle2,
+  Share,
+  PlusSquare,
+  UsersRound,
+  Loader2,
+  X,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
-// `useSearchParams` opts the component out of static prerendering
-// unless it sits under a Suspense boundary. We split the form into
-// a child component so the outer page can prerender the chrome
-// (background, card frame) while the form hydrates with the query
-// string on the client.
 export default function LoginPage() {
   return (
     <Suspense fallback={null}>
@@ -33,13 +37,8 @@ export default function LoginPage() {
 
 function LoginPageInner() {
   const searchParams = useSearchParams();
-  // Forwarded from `/join/<token>` when the visitor already has an
-  // account. After a successful sign-in we send them to the join
-  // page to accept rather than to /dashboard.
   const inviteToken = searchParams.get("invite");
   const t = useTranslations("LoginPage");
-  // Set by /auth/callback when an emailed link (confirmation, password
-  // reset) could not be turned into a session — see src/lib/auth/callback.ts.
   const linkError = searchParams.get("error");
   const linkErrorMessage =
     linkError === "link_expired"
@@ -53,6 +52,64 @@ function LoginPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
+
+  // PWA Installation state
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [iosModalOpen, setIosModalOpen] = useState(false);
+  const [desktopHintOpen, setDesktopHintOpen] = useState(false);
+
+  useEffect(() => {
+    // Check if already running in standalone PWA mode
+    const checkStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+    setIsStandalone(checkStandalone);
+
+    // Check iOS
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
+    setIsIOS(isIosDevice);
+
+    if (window.__pwaPrompt) {
+      setIsInstallable(true);
+    }
+
+    const onPromptAvailable = () => {
+      setIsInstallable(true);
+    };
+
+    const onAppInstalled = () => {
+      setIsStandalone(true);
+      setIsInstallable(false);
+    };
+
+    window.addEventListener("pwa-prompt-available", onPromptAvailable);
+    window.addEventListener("appinstalled", onAppInstalled);
+
+    return () => {
+      window.removeEventListener("pwa-prompt-available", onPromptAvailable);
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (window.__pwaPrompt) {
+      const promptEvent = window.__pwaPrompt;
+      promptEvent.prompt();
+      const choiceResult = await promptEvent.userChoice;
+      if (choiceResult.outcome === "accepted") {
+        setIsStandalone(true);
+        setIsInstallable(false);
+      }
+      window.__pwaPrompt = null;
+    } else if (isIOS) {
+      setIosModalOpen(true);
+    } else {
+      setDesktopHintOpen(true);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,14 +127,6 @@ function LoginPageInner() {
       return;
     }
 
-    // Full-page navigation (not router.push) so the browser issues a
-    // fresh top-level request that carries the just-written Supabase
-    // auth cookies to the middleware gating /dashboard. A soft
-    // client-side navigation can reach the protected route before the
-    // server observes the new session, so the middleware bounces it
-    // back to /login — which looks like the page "just refreshing"
-    // instead of signing in (issue #365). Mirrors the deliberate full
-    // reload the invite-accept flow already uses in join/[token].
     const destination = inviteToken
       ? `/join/${encodeURIComponent(inviteToken)}`
       : "/dashboard";
@@ -85,109 +134,230 @@ function LoginPageInner() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border bg-card">
-        <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl">
+    <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-8">
+      {/* Background radial gradient glow for premium feel */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] rounded-full bg-emerald-500/5 blur-3xl" />
+      </div>
+
+      <div className="relative w-full max-w-md">
+        {/* Main Auth Card with clean, undistorted layout */}
+        <div className="rounded-2xl border border-border/80 bg-card/95 p-6 sm:p-8 shadow-xl shadow-black/5 dark:shadow-black/25 backdrop-blur-sm">
+          {/* Header section */}
+          <div className="flex flex-col items-center text-center space-y-3 pb-6 border-b border-border/60">
             {inviteToken ? (
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                <UsersRound className="h-6 w-6 text-primary" />
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
+                <UsersRound className="size-7 text-primary" />
               </div>
             ) : (
-              <Image
-                src="/logo.png"
-                alt="Logo"
-                width={48}
-                height={48}
-                className="size-12 object-contain rounded-xl"
-                priority
-              />
+              <div className="flex size-16 items-center justify-center rounded-2xl bg-muted/40 border border-border/80 p-2 shadow-2xs">
+                <Image
+                  src="/logo.png"
+                  alt="WACRM Logo"
+                  width={56}
+                  height={56}
+                  className="size-12 object-contain"
+                  priority
+                />
+              </div>
             )}
+
+            <div className="space-y-1">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                {inviteToken ? t("titleAccept") : t("titleWelcome")}
+              </h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                {inviteToken ? t("descAccept") : t("descWelcome")}
+              </p>
+            </div>
           </div>
-          <CardTitle className="text-xl text-foreground">
-            {inviteToken ? t('titleAccept') : t('titleWelcome')}
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            {inviteToken
-              ? t('descAccept')
-              : t('descWelcome')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+
+          {/* Form section */}
+          <form onSubmit={handleLogin} className="mt-6 flex flex-col gap-4">
             {linkErrorMessage && !error && (
-              <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs sm:text-sm text-amber-300">
                 {linkErrorMessage}
               </div>
             )}
             {error && (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs sm:text-sm text-red-400">
                 {error}
               </div>
             )}
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email" className="text-muted-foreground">
-                {t('emailLabel')}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email" className="text-xs font-medium text-muted-foreground">
+                {t("emailLabel")}
               </Label>
               <Input
                 id="email"
                 type="email"
-                placeholder={t('emailPlaceholder')}
+                placeholder={t("emailPlaceholder")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
+                className="h-10 rounded-lg border-border/80 bg-muted/30 px-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20"
               />
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-muted-foreground">
-                  {t('passwordLabel')}
+                <Label htmlFor="password" className="text-xs font-medium text-muted-foreground">
+                  {t("passwordLabel")}
                 </Label>
                 <Link
                   href="/forgot-password"
-                  className="text-sm text-primary hover:text-primary/80"
+                  className="text-xs text-emerald-600 hover:text-emerald-500 dark:text-emerald-400"
                 >
-                  {t('forgotPassword')}
+                  {t("forgotPassword")}
                 </Link>
               </div>
               <Input
                 id="password"
                 type="password"
-                placeholder={t('passwordPlaceholder')}
+                placeholder={t("passwordPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
+                className="h-10 rounded-lg border-border/80 bg-muted/30 px-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20"
               />
             </div>
 
             <Button
               type="submit"
               disabled={loading}
-              className="mt-2 h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="mt-2 h-10 w-full rounded-lg bg-emerald-600 font-medium text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors cursor-pointer shadow-sm active:scale-[0.99]"
             >
-              {loading ? t('signingIn') : t('signIn')}
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin" />
+                  {t("signingIn")}
+                </span>
+              ) : (
+                t("signIn")
+              )}
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {t('noAccount')}{" "}
+          {/* Create account link */}
+          <p className="mt-5 text-center text-xs text-muted-foreground">
+            {t("noAccount")}{" "}
             <Link
               href={
                 inviteToken
                   ? `/signup?invite=${encodeURIComponent(inviteToken)}`
                   : "/signup"
               }
-              className="text-primary hover:text-primary/80"
+              className="font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-400"
             >
-              {t('createAccount')}
+              {t("createAccount")}
             </Link>
           </p>
-        </CardContent>
-      </Card>
+
+          {/* PWA Install Button Section */}
+          <div className="mt-6 pt-5 border-t border-border/60">
+            {isStandalone ? (
+              <div className="flex items-center justify-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 py-2 px-3 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="size-4 text-emerald-500" />
+                <span>WACRM is installed on this device</span>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-xl bg-muted/30 border border-border/70 p-3">
+                <div className="flex items-center gap-2.5 text-left">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <Smartphone className="size-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-foreground leading-tight">Install WACRM App</p>
+                    <p className="text-[11px] text-muted-foreground leading-tight">Fast access & instant alerts</p>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={handleInstallClick}
+                  className="w-full sm:w-auto h-8 px-3.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all active:scale-95 shrink-0"
+                >
+                  <Download className="size-3.5 mr-1.5" />
+                  Install App
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* iOS Safari Install Guide Dialog */}
+      <Dialog open={iosModalOpen} onOpenChange={setIosModalOpen}>
+        <DialogContent className="max-w-xs sm:max-w-sm rounded-2xl bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2 text-foreground">
+              <Smartphone className="size-5 text-emerald-500" />
+              Install on iPhone or iPad
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1">
+              Follow these two quick steps in Safari to install WACRM on your home screen:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="flex items-start gap-3 rounded-lg border border-border/80 bg-muted/40 p-2.5">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 font-bold text-emerald-500 text-xs">
+                1
+              </span>
+              <p className="text-foreground">
+                Tap the <span className="font-semibold text-emerald-500 inline-flex items-center gap-1"><Share className="size-3.5 inline" /> Share</span> button at the bottom of Safari.
+              </p>
+            </div>
+
+            <div className="flex items-start gap-3 rounded-lg border border-border/80 bg-muted/40 p-2.5">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 font-bold text-emerald-500 text-xs">
+                2
+              </span>
+              <p className="text-foreground">
+                Scroll down and select <span className="font-semibold text-emerald-500 inline-flex items-center gap-1"><PlusSquare className="size-3.5 inline" /> Add to Home Screen</span>.
+              </p>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            onClick={() => setIosModalOpen(false)}
+            className="w-full h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
+          >
+            Got it
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Desktop / Generic Browser Install Guide */}
+      <Dialog open={desktopHintOpen} onOpenChange={setDesktopHintOpen}>
+        <DialogContent className="max-w-xs sm:max-w-sm rounded-2xl bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2 text-foreground">
+              <Download className="size-5 text-emerald-500" />
+              Install WACRM on Desktop
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1">
+              To install WACRM as a desktop application:
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2 text-xs text-muted-foreground">
+            <p className="text-foreground">
+              Click the <strong className="text-emerald-500">Install icon (⊞ or ⬇)</strong> on the right side of your browser&apos;s address bar, or click your browser menu (⋮) and select <strong className="text-emerald-500">&quot;Install WACRM&quot;</strong>.
+            </p>
+          </div>
+
+          <Button
+            type="button"
+            onClick={() => setDesktopHintOpen(false)}
+            className="w-full h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
+          >
+            Understood
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
