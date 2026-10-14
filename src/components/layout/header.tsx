@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -76,19 +77,19 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             <Menu className="h-4 w-4" />
           </button>
 
-          {/* Supabase Green Bolt Logo */}
+          {/* Brand Logo */}
           <Link
             href="/dashboard"
             className="flex items-center gap-2 group px-1 py-1 rounded-md hover:bg-muted/50 transition-colors"
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              className="fill-emerald-500 transition-transform group-hover:scale-105"
-            >
-              <path d="M21.362 9.354H12V.346a.346.346 0 0 0-.589-.245L.103 11.41a.346.346 0 0 0 .245.59h9.362v9.008a.346.346 0 0 0 .589.245l11.308-11.309a.346.346 0 0 0-.245-.59z" />
-            </svg>
+            <Image
+              src="/logo.png"
+              alt="Logo"
+              width={24}
+              height={24}
+              className="size-6 object-contain rounded transition-transform group-hover:scale-105"
+              priority
+            />
           </Link>
 
           {/* Slash divider */}
