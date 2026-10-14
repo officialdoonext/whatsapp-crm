@@ -81,17 +81,17 @@ function StatusIcon({
 }) {
   switch (status) {
     case "sending":
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
+      return <Clock className="h-3 w-3 text-slate-500" />;
     case "sent":
-      return <Check className="h-3 w-3 text-muted-foreground" />;
+      return <Check className="h-3 w-3 text-slate-500" />;
     case "delivered":
-      return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
+      return <CheckCheck className="h-3 w-3 text-slate-500" />;
     case "read":
-      return <CheckCheck className="h-3 w-3 text-blue-400" />;
+      return <CheckCheck className="h-3 w-3 text-sky-500" />;
     case "failed":
       return (
         <span className="inline-flex" title={title ?? undefined}>
-          <XCircle className="h-3 w-3 text-red-400" />
+          <XCircle className="h-3 w-3 text-rose-500" />
         </span>
       );
     default:
@@ -282,17 +282,21 @@ export function MessageBubble({
     >
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          "relative rounded-2xl px-3 py-2 shadow-2xs",
           isAgent
-            ? "rounded-br-md bg-primary text-primary-foreground"
-            : "rounded-bl-md bg-muted text-foreground",
+            ? "rounded-br-md wa-bubble-outbound border border-[#c7efc0]"
+            : "rounded-bl-md wa-bubble-inbound border border-slate-200/90 dark:border-slate-800/80 shadow-2xs",
         )}
+        style={{
+          backgroundColor: isAgent ? "#d9fdd3" : "#ffffff",
+          color: "#111b21",
+        }}
       >
         {reply && (
           <ReplyQuote
             authorLabel={reply.authorLabel}
             preview={reply.preview}
-            onPrimary={isAgent}
+            onPrimary={false}
           />
         )}
         <MessageContent
@@ -307,29 +311,17 @@ export function MessageBubble({
             isAgent ? "justify-end" : "justify-start",
           )}
         >
-          {/* AI badge — only on replies the auto-reply bot generated
-              (always outbound, so it sits on the primary fill). Lets
-              agents tell an AI reply from their own / a Flow's at a
-              glance. */}
+          {/* AI badge — only on replies the auto-reply bot generated */}
           {message.ai_generated && (
             <span
-              className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
+              className="inline-flex items-center gap-0.5 rounded-full bg-emerald-800/10 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-emerald-800"
               title={t("aiBadgeTitle")}
             >
               <Sparkles className="h-2.5 w-2.5" />
               {t("aiBadge")}
             </span>
           )}
-          <span
-            className={cn(
-              "text-[10px]",
-              // Outbound bubbles sit on the primary fill, so the
-              // timestamp must read against that (not the neutral
-              // foreground) — otherwise it goes low-contrast in light
-              // mode. Inbound bubbles use the muted surface.
-              isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
-            )}
-          >
+          <span className="text-[10px] text-slate-500">
             {time}
           </span>
           {isAgent && <StatusIcon status={message.status} title={failure} />}

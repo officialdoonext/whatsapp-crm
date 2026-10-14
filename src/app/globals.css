@@ -298,3 +298,14 @@ html[data-theme="rose"] {
     font-weight: 500 !important;
   }
 }
+
+/* WhatsApp Message Bubbles */
+.wa-bubble-outbound {
+  background-color: #d9fdd3 !important;
+  color: #111b21 !important;
+}
+
+.wa-bubble-inbound {
+  background-color: #ffffff !important;
+  color: #111b21 !important;
+}

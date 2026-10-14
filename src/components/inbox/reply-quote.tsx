@@ -38,26 +38,19 @@ export function ReplyQuote({
           ? "rounded-md bg-muted/80"
           : onPrimary
             ? "mb-1.5 rounded-md bg-primary-foreground/15"
-            : "mb-1.5 rounded-md bg-background/20",
+            : "mb-1.5 rounded-md bg-black/5 border-emerald-600",
       )}
     >
       <div className="min-w-0 flex-1 overflow-hidden">
         <div
           className={cn(
-            "truncate text-[11px] font-medium",
-            onPrimary ? "text-primary-foreground" : "text-primary",
+            "truncate text-[11px] font-semibold",
+            isChip ? "text-primary" : onPrimary ? "text-primary-foreground" : "text-emerald-700 dark:text-emerald-800",
           )}
         >
           {authorLabel}
         </div>
-        {/* Wrap the preview instead of truncating to a single line.
-         *  `truncate` (white-space: nowrap) forced the quote onto one
-         *  impossibly-wide line and — because the parent flex chain
-         *  lacked `min-w-0` at every step — pushed the entire inbox
-         *  layout wider, shoving the contact sidebar off-screen.
-         *  `break-words` also wraps long URLs that have no whitespace
-         *  to break on. Issue #165. */}
-        <div className="whitespace-pre-wrap break-words text-xs text-foreground/80">
+        <div className="whitespace-pre-wrap break-words text-xs text-slate-700">
           {preview}
         </div>
       </div>
