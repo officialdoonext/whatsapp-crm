@@ -49,7 +49,7 @@ const KEY_PLACEHOLDER: Record<AiProvider, string> = {
   openai_compatible: 'your-api-key',
 };
 
-export function AiConfig() {
+export function AiConfig({ onSaved }: { onSaved?: () => void } = {}) {
   const { accountId, accountRole, profileLoading } = useAuth();
   const canEdit = accountRole ? canEditSettings(accountRole) : false;
   const t = useTranslations('Settings.aiConfig');
@@ -205,6 +205,7 @@ export function AiConfig() {
       if (res.ok) {
         toast.success(t('saveSuccess'));
         await fetchConfig();
+        onSaved?.();
       } else {
         toast.error(data.error ?? t('saveFailed'));
       }
@@ -230,6 +231,7 @@ export function AiConfig() {
         setAutoReplyEnabled(false);
         setSystemPrompt('');
         setHandoffAgentId('');
+        onSaved?.();
       } else {
         const data = await res.json();
         toast.error(data.error ?? t('removeFailed'));
