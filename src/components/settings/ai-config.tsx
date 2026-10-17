@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, CheckCircle2, Trash2, Eye, EyeOff } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 import { Button } from '@/components/ui/button';
@@ -41,12 +42,21 @@ const HANDOFF_QUEUE = '__queue__';
 const PROVIDER_LABEL: Record<Exclude<AiProvider, 'openai_compatible'>, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic (Claude)',
+  gemini: 'Google Gemini',
 };
 
 const KEY_PLACEHOLDER: Record<AiProvider, string> = {
   openai: 'sk-...',
   anthropic: 'sk-ant-...',
+  gemini: 'AIzaSy...',
   openai_compatible: 'your-api-key',
+};
+
+const POPULAR_MODELS: Record<AiProvider, string[]> = {
+  openai: ['gpt-5.4-mini', 'gpt-4o-mini', 'gpt-4o'],
+  anthropic: ['claude-haiku-4-5-20251001', 'claude-3-5-sonnet-20241022'],
+  gemini: ['gemini-3.8-flash', 'gemini-3.8-pro', 'gemini-3.5-flash', 'gemini-1.5-flash'],
+  openai_compatible: [],
 };
 
 export function AiConfig({ onSaved }: { onSaved?: () => void } = {}) {
@@ -134,6 +144,7 @@ export function AiConfig({ onSaved }: { onSaved?: () => void } = {}) {
     const isDefaultModel =
       model === AI_PROVIDER_DEFAULT_MODEL.openai ||
       model === AI_PROVIDER_DEFAULT_MODEL.anthropic ||
+      model === AI_PROVIDER_DEFAULT_MODEL.gemini ||
       model === AI_PROVIDER_DEFAULT_MODEL.openai_compatible ||
       model.trim() === '';
     if (isDefaultModel) setModel(next === 'openai_compatible' ? '' : AI_PROVIDER_DEFAULT_MODEL[next]);
@@ -294,6 +305,9 @@ export function AiConfig({ onSaved }: { onSaved?: () => void } = {}) {
                     <SelectItem value="anthropic">
                       {PROVIDER_LABEL.anthropic}
                     </SelectItem>
+                    <SelectItem value="gemini">
+                      {PROVIDER_LABEL.gemini}
+                    </SelectItem>
                     <SelectItem value="openai_compatible">
                       {t('providerOpenAiCompatible')}
                     </SelectItem>
@@ -310,6 +324,27 @@ export function AiConfig({ onSaved }: { onSaved?: () => void } = {}) {
                   placeholder={AI_PROVIDER_DEFAULT_MODEL[provider]}
                   disabled={disabled}
                 />
+                {POPULAR_MODELS[provider].length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] text-muted-foreground">Quick select:</span>
+                    {POPULAR_MODELS[provider].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setModel(m)}
+                        disabled={disabled}
+                        className={cn(
+                          'rounded-md border px-2 py-0.5 text-[11px] font-mono transition-colors cursor-pointer',
+                          model === m
+                            ? 'border-primary/50 bg-primary/10 text-primary font-semibold'
+                            : 'border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground',
+                        )}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {provider === 'openai_compatible' && (

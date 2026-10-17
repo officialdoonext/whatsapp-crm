@@ -307,4 +307,102 @@ describe('generateReply — OpenAI-compatible', () => {
 
     expect(fetchMock.mock.calls[0][1].redirect).toBe('manual')
   })
+
+  it('calls Gemini with formatted contents and parses reply and usage', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'Gemini reply' }],
+              role: 'model',
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 15,
+          candidatesTokenCount: 8,
+          totalTokenCount: 23,
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateReply({
+      config: config({
+        provider: 'gemini',
+        model: 'gemini-3.8-flash',
+        apiKey: 'AIzaSyTestKey',
+      }),
+      systemPrompt: 'You are a WhatsApp assistant',
+      messages: [
+        { role: 'user', content: 'What are your hours?' },
+        { role: 'assistant', content: 'We are open 9-5.' },
+        { role: 'user', content: 'Can I visit now?' },
+      ],
+    })
+
+    expect(result).toEqual({
+      text: 'Gemini reply',
+      handoff: false,
+      usage: { promptTokens: 15, completionTokens: 8, totalTokens: 23 },
+    })
+
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent')
+    expect(opts.headers['x-goog-api-key']).toBe('AIzaSyTestKey')
+
+    const body = JSON.parse(opts.body)
+    expect(body.system_instruction).toEqual({
+      parts: [{ text: 'You are a WhatsApp assistant' }],
+    })
+    expect(body.contents).toEqual([
+      { role: 'user', parts: [{ text: 'What are your hours?' }] },
+      { role: 'model', parts: [{ text: 'We are open 9-5.' }] },
+      { role: 'user', parts: [{ text: 'Can I visit now?' }] },
+    ])
+  })
+
+  it('detects handoff sentinel from Gemini reply', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'I will connect you [[HANDOFF]]' }],
+              role: 'model',
+            },
+          },
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateReply({
+      config: config({ provider: 'gemini' }),
+      systemPrompt: '',
+      messages: [{ role: 'user', content: 'Agent please' }],
+    })
+
+    expect(result.handoff).toBe(true)
+    expect(result.text).toBe('I will connect you')
+  })
+
+  it('throws on empty response from Gemini', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        candidates: [],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      generateReply({
+        config: config({ provider: 'gemini' }),
+        systemPrompt: '',
+        messages: [{ role: 'user', content: 'Hi' }],
+      }),
+    ).rejects.toMatchObject({ code: 'empty_response' })
+  })
 })
