@@ -510,15 +510,14 @@ export function AiConfig({ onSaved }: { onSaved?: () => void } = {}) {
                 id="ai-max"
                 type="number"
                 min={1}
-                max={50}
                 value={maxPerConversation}
                 onChange={(e) =>
                   setMaxPerConversation(
-                    Math.min(50, Math.max(1, Number(e.target.value) || 1)),
+                    Math.max(1, Number(e.target.value) || 1),
                   )
                 }
                 disabled={disabled || !autoReplyEnabled}
-                className="w-20"
+                className="w-24"
               />
             </div>
 

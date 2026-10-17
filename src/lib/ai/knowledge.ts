@@ -72,6 +72,28 @@ export async function ingestDocument(
   if (embedError) throw embedError
 }
 
+const STOP_WORDS = new Set([
+  'what', 'is', 'are', 'was', 'were', 'the', 'a', 'an', 'and', 'or', 'to',
+  'for', 'in', 'on', 'of', 'at', 'by', 'from', 'with', 'about', 'as', 'into',
+  'like', 'through', 'after', 'over', 'between', 'out', 'against', 'during',
+  'without', 'before', 'under', 'around', 'among', 'can', 'could', 'should',
+  'would', 'may', 'might', 'must', 'will', 'shall', 'do', 'does', 'did',
+  'have', 'has', 'had', 'you', 'your', 'yours', 'me', 'my', 'mine', 'we',
+  'our', 'ours', 'i', 'he', 'him', 'his', 'she', 'her', 'hers', 'it', 'its',
+  'they', 'them', 'their', 'theirs', 'how', 'why', 'when', 'where', 'who',
+  'which', 'whom', 'whose', 'hi', 'hello', 'hey', 'please', 'tell', 'want',
+  'know', 'need', 'help', 'give', 'show', 'any', 'some', 'much', 'many',
+])
+
+function extractKeywords(text: string): string {
+  const words = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 2 && !STOP_WORDS.has(w))
+  return words.join(' ').trim()
+}
+
 /**
  * Retrieve up to `k` knowledge excerpts relevant to `queryText`.
  *
@@ -100,7 +122,18 @@ export async function retrieveKnowledge(
       .from('ai_knowledge_chunks')
       .select('id', { count: 'exact', head: true })
       .eq('account_id', accountId)
-    if (error || !count) return []
+    if (error || !count) {
+      // Check if documents exist in ai_knowledge_documents before giving up
+      const { data: docs } = await db
+        .from('ai_knowledge_documents')
+        .select('id, content')
+        .eq('account_id', accountId)
+        .limit(k)
+      if (Array.isArray(docs) && docs.length > 0) {
+        return docs.map((d: { content: string }) => d.content).filter(Boolean)
+      }
+      return []
+    }
   } catch {
     return []
   }
@@ -142,6 +175,52 @@ export async function retrieveKnowledge(
       }
     } catch (err) {
       console.error('[ai knowledge] lexical retrieval failed:', err)
+    }
+  }
+
+  // If strict FTS returned 0 matches, retry FTS with filtered keywords (stripping common stop words
+  // like "what", "is", "are", "do", "you", "tell", "me" which break simple-dictionary FTS).
+  if (picked.size === 0) {
+    const keywords = extractKeywords(query)
+    if (keywords && keywords !== query.toLowerCase()) {
+      try {
+        const { data, error } = await db.rpc('match_ai_knowledge_fts', {
+          p_account_id: accountId,
+          p_query: keywords,
+          p_match_count: k,
+        })
+        if (!error && Array.isArray(data)) {
+          for (const row of data as MatchRow[]) {
+            if (picked.size >= k) break
+            if (!picked.has(row.id)) picked.set(row.id, row.content)
+          }
+        }
+      } catch (err) {
+        console.error('[ai knowledge] keyword FTS failed:', err)
+      }
+    }
+  }
+
+  // Fallback: If still no chunks matched (e.g. conversational questions, greetings, or phrasing mismatch),
+  // pull the top knowledge chunks from the account so the AI is always grounded in the business documentation.
+  if (picked.size === 0) {
+    try {
+      const { data: fallbackChunks, error: fbErr } = await db
+        .from('ai_knowledge_chunks')
+        .select('id, content')
+        .eq('account_id', accountId)
+        .order('chunk_index', { ascending: true })
+        .limit(k)
+      if (!fbErr && Array.isArray(fallbackChunks)) {
+        for (const row of fallbackChunks as MatchRow[]) {
+          if (row?.id && row?.content) {
+            if (picked.size >= k) break
+            picked.set(row.id, row.content)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[ai knowledge] fallback chunk retrieval failed:', err)
     }
   }
 

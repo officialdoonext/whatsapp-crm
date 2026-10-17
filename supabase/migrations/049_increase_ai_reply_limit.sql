@@ -1,5 +1,5 @@
 -- ============================================================
--- 049_increase_ai_reply_limit.sql — increase max auto-replies to 50
+-- 049_increase_ai_reply_limit.sql — remove upper limit on auto-replies
 -- ============================================================
 
 ALTER TABLE ai_configs
@@ -7,4 +7,4 @@ ALTER TABLE ai_configs
 
 ALTER TABLE ai_configs
   ADD CONSTRAINT ai_configs_auto_reply_max_per_conversation_check
-  CHECK (auto_reply_max_per_conversation BETWEEN 1 AND 50);
+  CHECK (auto_reply_max_per_conversation >= 1);
