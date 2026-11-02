@@ -210,9 +210,7 @@ function ForgotPasswordInner() {
                 {step === "request"
                   ? t("desc")
                   : step === "verify"
-                    ? t.rich("step2Desc", {
-                        email: () => <span className="font-semibold text-foreground">{email}</span>,
-                      })
+                    ? t("step2Desc", { email })
                     : t("successDesc")}
               </p>
             </div>
