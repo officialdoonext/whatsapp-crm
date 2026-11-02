@@ -3,57 +3,74 @@
 // ============================================================
 // /reset-password — the form the password-reset email leads to.
 //
-// The emailed link lands on /auth/callback, which exchanges it for a
-// session and 303s here. So on arrival the visitor either has a
-// recovery session (show the form) or doesn't (the link was spent,
-// expired, or opened in a browser without the PKCE verifier cookie —
-// say so, with a way to request a new one). Bouncing to /login with
-// no explanation was the locked-out experience issue #592 describes.
-//
-// Not gated by the middleware on purpose: the "expired" state must be
-// reachable signed-out, and a signed-in visitor must not be redirected
-// away from the very page they need.
+// Supports two paths:
+// 1. Direct OTP link: /reset-password?email=...&code=...
+//    Verifies the 6-digit code via /api/auth/forgot-password/verify-and-reset
+//    and updates the user's password directly via the admin client.
+// 2. Supabase PKCE / session callback:
+//    Lands here with an authenticated recovery session and updates via
+//    supabase.auth.updateUser({ password }).
 // ============================================================
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { CheckCircle, KeyRound, Loader2, MailX } from "lucide-react";
+  CheckCircle2,
+  KeyRound,
+  Loader2,
+  MailX,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 
 type Status = "checking" | "ready" | "expired" | "done";
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResetPasswordInner />
+    </Suspense>
+  );
+}
+
+function ResetPasswordInner() {
   const t = useTranslations("ResetPasswordPage");
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  const queryEmail = searchParams.get("email") || "";
+  const queryCode = searchParams.get("code") || "";
 
   const [status, setStatus] = useState<Status>("checking");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    // If arriving with email & code in query params, it's immediately ready
+    if (queryEmail && queryCode) {
+      setStatus("ready");
+      return;
+    }
+
     let cancelled = false;
-    // The callback wrote the session cookies server-side; the browser
-    // client reads them here. No user → the link didn't yield a session.
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!cancelled) setStatus(user ? "ready" : "expired");
     });
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [supabase, queryEmail, queryCode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,20 +80,52 @@ export default function ResetPasswordPage() {
       setError(t("passwordsMismatch"));
       return;
     }
-    // Same floor as /signup.
+
     if (password.length < 6) {
       setError(t("passwordTooShort"));
       return;
     }
 
-    setSaving(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setSaving(false);
+    // Path 1: Direct OTP Code verification
+    if (queryEmail && queryCode) {
+      setSaving(true);
+      try {
+        const res = await fetch("/api/auth/forgot-password/verify-and-reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: queryEmail.trim().toLowerCase(),
+            code: queryCode.trim(),
+            newPassword: password,
+          }),
+        });
 
-    if (error) {
-      setError(error.message);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data.error || "Failed to update password. Code may have expired.");
+          setSaving(false);
+          return;
+        }
+
+        setSaving(false);
+        setStatus("done");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to reset password.");
+        setSaving(false);
+      }
       return;
     }
+
+    // Path 2: Supabase active recovery session
+    setSaving(true);
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    setSaving(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
     setStatus("done");
   };
 
@@ -84,7 +133,7 @@ export default function ResetPasswordPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin text-emerald-500" />
           {t("checking")}
         </div>
       </div>
@@ -93,136 +142,208 @@ export default function ResetPasswordPage() {
 
   if (status === "expired") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md border-border bg-card">
-          <CardHeader className="items-center text-center">
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10">
-              <MailX className="h-6 w-6 text-amber-400" />
+      <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-8">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] rounded-full bg-emerald-500/5 blur-3xl" />
+        </div>
+
+        <div className="relative w-full max-w-md">
+          <div className="rounded-2xl border border-border/80 bg-card/95 p-6 sm:p-8 shadow-xl shadow-black/5 dark:shadow-black/25 backdrop-blur-sm">
+            <div className="flex flex-col items-center text-center space-y-3 pb-6 border-b border-border/60">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                <MailX className="size-7 text-amber-500" />
+              </div>
+              <div className="space-y-1">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                  {t("expiredTitle")}
+                </h1>
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  {t("expiredDesc")}
+                </p>
+              </div>
             </div>
-            <CardTitle className="text-xl text-foreground">
-              {t("expiredTitle")}
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              {t("expiredDesc")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <Link href="/forgot-password">
-              <Button className="h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90">
-                {t("requestNewLink")}
-              </Button>
-            </Link>
-            <Link href="/login">
-              <Button
-                variant="outline"
-                className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                {t("backToSignIn")}
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+
+            <div className="mt-6 flex flex-col gap-3">
+              <Link href="/forgot-password">
+                <Button className="h-10 w-full rounded-lg bg-emerald-600 font-medium text-white hover:bg-emerald-500 transition-colors shadow-sm cursor-pointer">
+                  {t("requestNewLink")}
+                </Button>
+              </Link>
+              <Link href="/login">
+                <Button
+                  variant="outline"
+                  className="h-10 w-full rounded-lg border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+                >
+                  {t("backToSignIn")}
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (status === "done") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md border-border bg-card">
-          <CardHeader className="items-center text-center">
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-              <CheckCircle className="h-6 w-6 text-primary" />
+      <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-8">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] rounded-full bg-emerald-500/5 blur-3xl" />
+        </div>
+
+        <div className="relative w-full max-w-md">
+          <div className="rounded-2xl border border-border/80 bg-card/95 p-6 sm:p-8 shadow-xl shadow-black/5 dark:shadow-black/25 backdrop-blur-sm">
+            <div className="flex flex-col items-center text-center space-y-3 pb-6 border-b border-border/60">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                <CheckCircle2 className="size-7 text-emerald-500" />
+              </div>
+              <div className="space-y-1">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                  {t("successTitle")}
+                </h1>
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  {t("successDesc")}
+                </p>
+              </div>
             </div>
-            <CardTitle className="text-xl text-foreground">
-              {t("successTitle")}
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              {t("successDesc")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              className="h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90"
-              onClick={() => {
-                // Full-page navigation, like /login: the middleware
-                // gating /dashboard must see the session cookies on a
-                // fresh top-level request, which a soft router.push
-                // can race (issue #365).
-                // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- deliberate full reload so the auth cookies reach the middleware
-                window.location.href = "/dashboard";
-              }}
-            >
-              {t("continueToDashboard")}
-            </Button>
-          </CardContent>
-        </Card>
+
+            <div className="mt-6">
+              <Button
+                className="h-10 w-full rounded-lg bg-emerald-600 font-medium text-white hover:bg-emerald-500 transition-colors cursor-pointer shadow-sm"
+                onClick={() => {
+                  window.location.href = "/login";
+                }}
+              >
+                {t("backToSignIn")}
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border bg-card">
-        <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <KeyRound className="h-6 w-6 text-primary" />
+    <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-8">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] rounded-full bg-emerald-500/5 blur-3xl" />
+      </div>
+
+      <div className="relative w-full max-w-md">
+        <div className="rounded-2xl border border-border/80 bg-card/95 p-6 sm:p-8 shadow-xl shadow-black/5 dark:shadow-black/25 backdrop-blur-sm">
+          <div className="flex flex-col items-center text-center space-y-3 pb-6 border-b border-border/60">
+            <div className="flex size-16 items-center justify-center rounded-2xl bg-muted/40 border border-border/80 p-2 shadow-2xs">
+              <Image
+                src="/logo.png"
+                alt="WACRM Logo"
+                width={56}
+                height={56}
+                className="size-12 object-contain"
+                priority
+              />
+            </div>
+            <div className="space-y-1">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("title")}</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                {queryEmail ? (
+                  <span>
+                    Setting new password for{" "}
+                    <strong className="text-foreground">{queryEmail}</strong>
+                  </span>
+                ) : (
+                  t("desc")
+                )}
+              </p>
+            </div>
           </div>
-          <CardTitle className="text-xl text-foreground">{t("title")}</CardTitle>
-          <CardDescription className="text-muted-foreground">
-            {t("desc")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
+          <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
             {error && (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs sm:text-sm text-red-400">
                 {error}
               </div>
             )}
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="password" className="text-muted-foreground">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password" className="text-xs font-medium text-muted-foreground">
                 {t("passwordLabel")}
               </Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="new-password"
-                placeholder={t("passwordPlaceholder")}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder={t("passwordPlaceholder")}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoFocus
+                  className="h-10 rounded-lg border-border/80 bg-muted/30 pl-3.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="confirmPassword" className="text-muted-foreground">
+            <div className="flex flex-col gap-1.5">
+              <Label
+                htmlFor="confirmPassword"
+                className="text-xs font-medium text-muted-foreground"
+              >
                 {t("confirmPasswordLabel")}
               </Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                autoComplete="new-password"
-                placeholder={t("confirmPasswordPlaceholder")}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
-              />
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder={t("confirmPasswordPlaceholder")}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  className="h-10 rounded-lg border-border/80 bg-muted/30 pl-3.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors cursor-pointer"
+                >
+                  {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
             </div>
 
             <Button
               type="submit"
               disabled={saving}
-              className="mt-2 h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="mt-2 h-10 w-full rounded-lg bg-emerald-600 font-medium text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors cursor-pointer shadow-sm active:scale-[0.99]"
             >
-              {saving ? t("saving") : t("submit")}
+              {saving ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin" />
+                  {t("saving")}
+                </span>
+              ) : (
+                t("submit")
+              )}
             </Button>
+
+            <Link
+              href="/login"
+              className="mt-3 text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {t("backToSignIn")}
+            </Link>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
