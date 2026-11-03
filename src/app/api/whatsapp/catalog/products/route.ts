@@ -91,8 +91,9 @@ export async function POST(request: Request) {
     }
 
     const numPrice = Number(price) || 0
+    let metaWarning: string | null = null
 
-    // If requested, upload product directly to Meta Commerce Catalog
+    // If requested, attempt to upload product directly to Meta Commerce Catalog
     if (sync_to_meta) {
       const accessToken = decrypt(config.access_token)
       try {
@@ -113,10 +114,20 @@ export async function POST(request: Request) {
         })
       } catch (metaErr) {
         const msg = metaErr instanceof Error ? metaErr.message : 'Meta upload failed'
-        return NextResponse.json(
-          { error: `Failed to create product in Meta Catalog: ${msg}` },
-          { status: 400 }
-        )
+        const isPermission =
+          msg.includes('catalog_management') ||
+          msg.includes('Unsupported get request') ||
+          msg.includes('permission')
+
+        if (isPermission) {
+          metaWarning =
+            "Product saved in local catalog! Note: To also sync products to Meta Catalog via API, grant 'catalog_management' permission to your System User token in Meta Business Suite."
+        } else {
+          return NextResponse.json(
+            { error: `Failed to create product in Meta Catalog: ${msg}` },
+            { status: 400 }
+          )
+        }
       }
     }
 
@@ -150,6 +161,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       product,
+      warning: metaWarning,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create product'

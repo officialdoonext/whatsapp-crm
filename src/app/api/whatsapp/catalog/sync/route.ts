@@ -92,7 +92,17 @@ export async function POST() {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Sync failed'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const isPermission =
+      message.includes('catalog_management') ||
+      message.includes('Unsupported get request') ||
+      message.includes('permission')
+    return NextResponse.json(
+      {
+        error: message,
+        requiresCatalogPermission: isPermission,
+      },
+      { status: 400 }
+    )
   }
 }
 

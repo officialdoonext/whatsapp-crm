@@ -27,6 +27,8 @@ export interface MetaCatalogInfo {
   name?: string
   vertical?: string
   product_count?: number
+  warning?: string
+  verifiedVia?: 'waba_product_catalogs' | 'catalog_node' | 'direct_id'
 }
 
 export interface MetaCatalogProductItem {
@@ -43,30 +45,130 @@ export interface MetaCatalogProductItem {
 }
 
 /**
- * Verify a Meta Commerce Catalog ID by fetching its metadata.
+ * Fetch all catalogs linked to a WhatsApp Business Account (WABA).
+ * Uses the WhatsApp Cloud API standard whatsapp_business_management permission.
+ */
+export async function getWabaCatalogs(args: {
+  wabaId: string
+  accessToken: string
+}): Promise<Array<{ id: string; name?: string; vertical?: string }>> {
+  const { wabaId, accessToken } = args
+  if (!wabaId) return []
+
+  try {
+    const url = `${META_API_BASE}/${encodeURIComponent(wabaId)}/product_catalogs?fields=id,name,vertical`
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!response.ok) return []
+    const json = await response.json()
+    return (json.data || []) as Array<{ id: string; name?: string; vertical?: string }>
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Verify a Meta Commerce Catalog ID with multi-layer fallback:
+ * 1. Check if the catalog is already linked to the WABA (requires only whatsapp_business_management).
+ * 2. Attempt minimal direct Graph API catalog lookup (GET /{catalog_id}?fields=id,name).
+ * 3. If direct Graph API lookup fails with "Unsupported get request" (code 100/33/200),
+ *    do not block saving! In-chat WhatsApp product messages work without catalog_management permission
+ *    as long as the catalog is linked in WhatsApp Manager. Return the catalog with guidance.
  */
 export async function verifyMetaCatalog(args: {
   catalogId: string
   accessToken: string
+  wabaId?: string | null
 }): Promise<MetaCatalogInfo> {
-  const { catalogId, accessToken } = args
-  const url = `${META_API_BASE}/${encodeURIComponent(catalogId)}?fields=id,name,vertical,product_count`
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
+  const { catalogId, accessToken, wabaId } = args
+  const cleanId = catalogId.trim()
 
-  if (!response.ok) {
-    let errMessage = `Catalog verification failed (${response.status})`
-    try {
-      const data = await response.json()
-      if (data?.error?.message) errMessage = data.error.message
-    } catch {
-      // response wasn't JSON
-    }
-    throw new Error(errMessage)
+  if (!cleanId) {
+    throw new Error('Please enter a valid Meta Catalog ID.')
   }
 
-  return response.json()
+  // Attempt 1: Check WhatsApp Business Account linked catalogs
+  if (wabaId) {
+    try {
+      const linked = await getWabaCatalogs({ wabaId, accessToken })
+      const match = linked.find((c) => c.id === cleanId)
+      if (match) {
+        return {
+          id: match.id,
+          name: match.name || `Catalog ${match.id}`,
+          vertical: match.vertical,
+          verifiedVia: 'waba_product_catalogs',
+        }
+      }
+    } catch {
+      // Continue to direct lookup
+    }
+  }
+
+  // Attempt 2: Direct Graph API catalog lookup with minimal fields
+  const url = `${META_API_BASE}/${encodeURIComponent(cleanId)}?fields=id,name`
+  let response: Response | null = null
+  let errData: any = null
+
+  try {
+    response = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+  } catch (netErr: any) {
+    throw new Error(`Failed to reach Meta Graph API: ${netErr.message || 'Network error'}`)
+  }
+
+  if (response.ok) {
+    const data = await response.json()
+    return {
+      id: data.id || cleanId,
+      name: data.name || `Catalog ${cleanId}`,
+      vertical: data.vertical,
+      product_count: data.product_count,
+      verifiedVia: 'catalog_node',
+    }
+  }
+
+  // Read error response
+  try {
+    errData = await response.json()
+  } catch {
+    // non-json
+  }
+
+  const errMessage = errData?.error?.message || `Catalog verification failed (${response.status})`
+  const errCode = errData?.error?.code
+  const subCode = errData?.error?.error_subcode
+
+  // If token is expired or unauthorized (OAuth 190, 102), fail explicitly
+  if (errCode === 190 || errCode === 102 || response.status === 401) {
+    throw new Error(`WhatsApp Access Token is invalid or expired (${errMessage}). Please reconnect WhatsApp.`)
+  }
+
+  // Check if Meta returned "Unsupported get request", Code 100, Subcode 33, or permissions error.
+  // This occurs when a WhatsApp System User token does not have 'catalog_management' permission.
+  // In WhatsApp Cloud API, in-chat product messages still work as long as the catalog is linked in WhatsApp Manager.
+  const isPermissionOrUnsupported =
+    errCode === 100 ||
+    errCode === 200 ||
+    subCode === 33 ||
+    errMessage.toLowerCase().includes('unsupported get request') ||
+    errMessage.toLowerCase().includes('permission') ||
+    errMessage.toLowerCase().includes('does not exist')
+
+  if (isPermissionOrUnsupported) {
+    return {
+      id: cleanId,
+      name: `Catalog ${cleanId}`,
+      verifiedVia: 'direct_id',
+      warning:
+        "Catalog connected for WhatsApp messages! Note: Meta Graph API returned 'Unsupported get request' during direct metadata lookup. In-chat product & catalog messages will work normally. To enable automatic 2-way product sync in this dashboard, add 'catalog_management' permission to your System User token in Meta Business Suite.",
+    }
+  }
+
+  // Otherwise throw standard Meta error
+  throw new Error(`Meta Catalog Verification Failed: ${errMessage}`)
 }
 
 /**
@@ -78,22 +180,59 @@ export async function fetchMetaCatalogProducts(args: {
   limit?: number
 }): Promise<MetaCatalogProductItem[]> {
   const { catalogId, accessToken, limit = 100 } = args
-  const url = `${META_API_BASE}/${encodeURIComponent(
-    catalogId
-  )}/products?fields=id,retailer_id,name,description,price,currency,image_url,url,availability,category&limit=${limit}`
+  const cleanId = catalogId.trim()
 
-  const response = await fetch(url, {
+  // First try standard commerce fields
+  const fields = 'id,retailer_id,name,description,price,currency,image_url,url,availability,category'
+  const url = `${META_API_BASE}/${encodeURIComponent(cleanId)}/products?fields=${fields}&limit=${limit}`
+
+  let response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
+  // If failed due to a field mismatch (e.g. nonexisting field 'category'), retry with core fields
+  if (!response.ok) {
+    let rawError = ''
+    try {
+      const errClone = await response.clone().json()
+      rawError = errClone?.error?.message || ''
+    } catch {}
+
+    if (rawError.toLowerCase().includes('nonexisting field') || rawError.toLowerCase().includes('fields')) {
+      const coreFields = 'id,retailer_id,name,description,price,currency,image_url,url,availability'
+      const fallbackUrl = `${META_API_BASE}/${encodeURIComponent(cleanId)}/products?fields=${coreFields}&limit=${limit}`
+      response = await fetch(fallbackUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+    }
+  }
+
   if (!response.ok) {
     let errMessage = `Failed to fetch products (${response.status})`
+    let subCode = 0
+    let code = 0
     try {
       const data = await response.json()
       if (data?.error?.message) errMessage = data.error.message
+      code = data?.error?.code || 0
+      subCode = data?.error?.error_subcode || 0
     } catch {
       // response wasn't JSON
     }
+
+    const isPermissionError =
+      subCode === 33 ||
+      code === 200 ||
+      errMessage.toLowerCase().includes('missing permissions') ||
+      errMessage.toLowerCase().includes('unsupported get request') ||
+      errMessage.toLowerCase().includes('permission')
+
+    if (isPermissionError) {
+      throw new Error(
+        `Your active token is missing the 'catalog_management' permission. Although your System User has the Catalog asset assigned in Meta, existing tokens do NOT automatically gain new permissions. In Meta Business Suite (Settings → System Users), click 'Generate token' next to Admin, select your app, check the 'catalog_management' permission, and update your token in Settings.`
+      )
+    }
+
     throw new Error(errMessage)
   }
 

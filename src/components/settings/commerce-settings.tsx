@@ -52,6 +52,15 @@ export function CommerceSettings() {
   const [catalogName, setCatalogName] = useState<string | null>(null);
   const [catalogConnectedAt, setCatalogConnectedAt] = useState<string | null>(null);
   const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
+  const [linkedCatalogs, setLinkedCatalogs] = useState<Array<{ id: string; name?: string; vertical?: string }>>([]);
+  const [tokenInfo, setTokenInfo] = useState<{
+    scopes: string[];
+    has_catalog_management: boolean;
+    has_whatsapp: boolean;
+  } | null>(null);
+  const [newTokenInput, setNewTokenInput] = useState("");
+  const [updatingToken, setUpdatingToken] = useState(false);
+  const [showTokenUpdate, setShowTokenUpdate] = useState(false);
 
   // Payment State
   const [paymentProvider, setPaymentProvider] = useState<PaymentProvider>("manual");
@@ -105,6 +114,12 @@ export function CommerceSettings() {
         setCatalogName(data.catalog_name || null);
         setCatalogConnectedAt(data.catalog_connected_at || null);
         setIsWhatsappConnected(!!data.is_whatsapp_connected);
+        if (data.linked_catalogs && Array.isArray(data.linked_catalogs)) {
+          setLinkedCatalogs(data.linked_catalogs);
+        }
+        if (data.token_info) {
+          setTokenInfo(data.token_info);
+        }
         setPaymentProvider(data.payment_provider || "manual");
         setAutoPaymentLink(!!data.auto_create_payment_link);
 
@@ -147,8 +162,9 @@ export function CommerceSettings() {
     }
   };
 
-  const handleVerifyCatalog = async () => {
-    if (!catalogId.trim()) {
+  const handleVerifyCatalog = async (overrideId?: string) => {
+    const idToUse = (overrideId || catalogId).trim();
+    if (!idToUse) {
       toast.error("Please enter a Meta Catalog ID");
       return;
     }
@@ -158,15 +174,23 @@ export function CommerceSettings() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          catalog_id: catalogId.trim(),
+          catalog_id: idToUse,
           test_catalog: true,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to verify catalog");
-      setCatalogName(data.catalog_name);
-      setCatalogConnectedAt(data.catalog_connected_at);
-      toast.success("Meta Catalog verified successfully!");
+
+      setCatalogId(data.catalog_id || idToUse);
+      setCatalogName(data.catalog_name || `Catalog ${idToUse}`);
+      setCatalogConnectedAt(data.catalog_connected_at || new Date().toISOString());
+
+      if (data.warning) {
+        toast.warning(data.warning, { duration: 10000 });
+      } else {
+        toast.success("Meta Catalog saved and connected successfully!");
+      }
+
       // Automatically sync products upon verification
       handleSyncProducts();
     } catch (err: any) {
@@ -183,13 +207,50 @@ export function CommerceSettings() {
         method: "POST",
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Sync failed");
+      if (!res.ok) {
+        if (data.requiresCatalogPermission || data.error?.includes("catalog_management") || data.error?.includes("permission")) {
+          toast.warning(data.error, { duration: 12000 });
+          return;
+        }
+        throw new Error(data.error || "Sync failed");
+      }
       toast.success(data.message || `Synchronized ${data.synced} products.`);
       loadProducts();
     } catch (err: any) {
       toast.error(err.message || "Failed to sync products from Meta");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleUpdateToken = async () => {
+    if (!newTokenInput.trim()) {
+      toast.error("Please paste your newly generated System User access token");
+      return;
+    }
+    setUpdatingToken(true);
+    try {
+      const res = await fetch("/api/whatsapp/commerce/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          new_access_token: newTokenInput.trim(),
+          catalog_id: catalogId.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update token");
+
+      toast.success("New token saved and verified with Meta!");
+      setNewTokenInput("");
+      setShowTokenUpdate(false);
+      await loadCommerceConfig();
+      // Immediately trigger product sync with the new token
+      handleSyncProducts();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update token");
+    } finally {
+      setUpdatingToken(false);
     }
   };
 
@@ -261,7 +322,13 @@ export function CommerceSettings() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to add product");
-      toast.success("Product created in Meta Catalog & synced!");
+
+      if (data.warning) {
+        toast.warning(data.warning, { duration: 9000 });
+      } else {
+        toast.success("Product created in Meta Catalog & synced!");
+      }
+
       setAddProductOpen(false);
       // Reset form
       setNewSku("");
@@ -329,6 +396,135 @@ export function CommerceSettings() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              {tokenInfo && !tokenInfo.has_catalog_management && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>Action Required for Product Sync: Regenerate Token with Permission</span>
+                    </div>
+                    <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/20 text-[10px] w-fit">
+                      catalog_management Missing on Token
+                    </Badge>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    You assigned the Catalog asset in Meta Business Suite, but <strong>Meta tokens do not automatically inherit newly assigned assets</strong>. Your current active token only has WhatsApp permissions.
+                  </p>
+
+                  <div className="rounded-lg bg-background/80 border border-border p-2.5 text-[11px] space-y-1.5">
+                    <p className="font-semibold text-foreground">Current Active Token Permissions:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tokenInfo.scopes.map((s) => (
+                        <Badge key={s} variant="secondary" className="text-[10px] font-mono py-0 text-emerald-600 dark:text-emerald-400">
+                          ✓ {s}
+                        </Badge>
+                      ))}
+                      <Badge variant="destructive" className="text-[10px] font-mono py-0">
+                        ✗ catalog_management (Missing)
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-1 text-xs">
+                    <p className="font-semibold text-foreground">How to fix in 30 seconds:</p>
+                    <ol className="list-decimal list-inside text-[11px] text-muted-foreground space-y-1.5">
+                      <li>In Meta Business Suite (on the <strong>System Users</strong> screen from your screenshot), click <strong>Generate token</strong> next to Admin.</li>
+                      <li>Select app <strong>Gama Next Integration</strong>, and in the permissions list check the <strong>catalog_management</strong> box (keep existing whatsapp permissions checked).</li>
+                      <li>Copy the new token and paste it here:</li>
+                    </ol>
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                      <Input
+                        placeholder="Paste newly generated token here (starts with EAAV...)"
+                        value={newTokenInput}
+                        onChange={(e) => setNewTokenInput(e.target.value)}
+                        className="text-xs font-mono bg-background"
+                        type="password"
+                      />
+                      <Button
+                        onClick={handleUpdateToken}
+                        disabled={updatingToken || !newTokenInput.trim()}
+                        className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 text-xs font-medium"
+                      >
+                        {updatingToken ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+                        Update Token &amp; Sync Now
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {tokenInfo?.has_catalog_management && (
+                <div className="flex items-center justify-between rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>System User Token is active with <strong>catalog_management</strong> permission.</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowTokenUpdate(!showTokenUpdate)}
+                    className="text-[11px] h-7 px-2"
+                  >
+                    {showTokenUpdate ? "Hide" : "Rotate Token"}
+                  </Button>
+                </div>
+              )}
+
+              {showTokenUpdate && (
+                <div className="rounded-xl border border-border bg-muted/40 p-3 space-y-2 text-xs">
+                  <p className="font-medium text-foreground">Rotate System User Permanent Token:</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      placeholder="Paste new token here (starts with EAAV...)"
+                      value={newTokenInput}
+                      onChange={(e) => setNewTokenInput(e.target.value)}
+                      className="text-xs font-mono bg-background"
+                      type="password"
+                    />
+                    <Button
+                      onClick={handleUpdateToken}
+                      disabled={updatingToken || !newTokenInput.trim()}
+                      size="sm"
+                      className="shrink-0 text-xs"
+                    >
+                      {updatingToken ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : "Save New Token"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {linkedCatalogs.length > 0 && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+                    <Layers className="h-4 w-4" />
+                    <span>WhatsApp Linked Catalogs Detected</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    These catalogs are already linked to your WhatsApp Business Account. Click one to connect it:
+                  </p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {linkedCatalogs.map((cat) => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => {
+                          setCatalogId(cat.id);
+                          handleVerifyCatalog(cat.id);
+                        }}
+                        className="group flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:border-primary hover:bg-primary/10 transition-colors shadow-sm"
+                      >
+                        <span className="font-semibold text-foreground">{cat.name || `Catalog ${cat.id}`}</span>
+                        <Badge variant="secondary" className="text-[10px] py-0 font-mono">
+                          ID: {cat.id}
+                        </Badge>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-0.5" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label htmlFor="catalogId">Meta Catalog ID</Label>
@@ -349,18 +545,18 @@ export function CommerceSettings() {
                       Meta Commerce Manager
                       <ExternalLink className="h-2.5 w-2.5" />
                     </a>{" "}
-                    under Catalog Settings.
+                    under Catalog Settings, or in WhatsApp Manager &rarr; Catalog.
                   </p>
                 </div>
 
                 <div className="flex items-end gap-2">
                   <Button
-                    onClick={handleVerifyCatalog}
+                    onClick={() => handleVerifyCatalog()}
                     disabled={verifying || !catalogId.trim()}
                     className="w-full bg-primary"
                   >
                     {verifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                    Verify & Connect
+                    Save & Connect
                   </Button>
                 </div>
               </div>
@@ -368,9 +564,9 @@ export function CommerceSettings() {
               {catalogName && (
                 <div className="rounded-xl bg-muted/50 p-3.5 flex items-center justify-between border border-border">
                   <div>
-                    <p className="text-xs font-semibold text-foreground">Catalog Name: {catalogName}</p>
+                    <p className="text-xs font-semibold text-foreground">Catalog: {catalogName}</p>
                     <p className="text-[11px] text-muted-foreground">
-                      Linked at: {catalogConnectedAt ? new Date(catalogConnectedAt).toLocaleString() : "Recently"}
+                      Connected at: {catalogConnectedAt ? new Date(catalogConnectedAt).toLocaleString() : "Recently"}
                     </p>
                   </div>
                   <Button
@@ -385,6 +581,46 @@ export function CommerceSettings() {
                   </Button>
                 </div>
               )}
+
+              {/* Helpful Integration Guide Callout */}
+              <div className="rounded-xl border border-muted bg-muted/30 p-3.5 text-xs space-y-2">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <Zap className="h-3.5 w-3.5 text-amber-500" />
+                  <span>Meta WhatsApp Catalog Setup Guide</span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 text-[11px] text-muted-foreground">
+                  <div className="space-y-1">
+                    <p className="font-medium text-foreground">1. WhatsApp In-Chat Messaging (Ready)</p>
+                    <p>
+                      In{" "}
+                      <a
+                        href="https://business.facebook.com/wa/manage/home/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        WhatsApp Manager
+                      </a>
+                      , open <strong>Account tools &rarr; Catalog</strong> and link this catalog. Agents can immediately send products &amp; storefronts in chat!
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="font-medium text-foreground">2. Direct Product Sync via API (Optional)</p>
+                    <p>
+                      If sync reports <em>Unsupported get request</em>, open{" "}
+                      <a
+                        href="https://business.facebook.com/settings/system-users"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Meta Business Settings &rarr; System Users
+                      </a>
+                      , click <strong>Assigned Assets</strong>, add your Catalog, and enable <strong>Manage Catalog</strong> (<code>catalog_management</code>).
+                    </p>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
