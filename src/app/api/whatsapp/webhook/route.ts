@@ -88,6 +88,17 @@ interface WhatsAppMessage {
   button?: { text?: string; payload?: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
+  /** Present when the customer submits a cart / order from a catalog. */
+  order?: {
+    catalog_id: string
+    text?: string
+    product_items: Array<{
+      product_retailer_id: string
+      quantity: number | string
+      item_price: number | string
+      currency: string
+    }>
+  }
 }
 
 /** One entry of a failed status's `errors` array, as Meta sends it. */
@@ -718,7 +729,7 @@ async function processMessage(
   }
 
   // Parse message content based on type
-  const { contentText, mediaUrl, mediaType, interactiveReplyId } =
+  const { contentText, mediaUrl, mediaType, interactiveReplyId, orderPayload } =
     await parseMessageContent(
       message,
       accessToken,
@@ -754,7 +765,7 @@ async function processMessage(
   // allowed value so the INSERT doesn't fail with a constraint error.
   const ALLOWED_CONTENT_TYPES = new Set([
     'text', 'image', 'document', 'audio', 'video',
-    'location', 'template', 'interactive',
+    'location', 'template', 'interactive', 'order',
   ])
   const contentType = ALLOWED_CONTENT_TYPES.has(message.type)
     ? message.type
@@ -805,6 +816,7 @@ async function processMessage(
         // the column; null for every other content_type so existing inserts
         // behave identically.
         interactive_reply_id: interactiveReplyId,
+        interactive_payload: orderPayload ?? null,
       },
       { onConflict: 'conversation_id,message_id', ignoreDuplicates: true }
     )
@@ -813,6 +825,32 @@ async function processMessage(
   if (msgError) {
     console.error('Error inserting message:', msgError)
     return
+  }
+
+  // Record commerce order if this is an inbound catalog order
+  if (message.type === 'order' && orderPayload) {
+    const orderRef = `ORD-${Date.now().toString(36).toUpperCase()}`
+    void supabaseAdmin()
+      .from('commerce_orders')
+      .insert({
+        account_id: accountId,
+        conversation_id: conversation.id,
+        contact_id: contactRecord.id,
+        whatsapp_message_id: message.id,
+        catalog_id: message.order?.catalog_id || null,
+        order_reference: orderRef,
+        status: 'pending',
+        currency: (orderPayload.currency as string) || 'USD',
+        total_amount: (orderPayload.total_amount as number) || 0,
+        subtotal: (orderPayload.total_amount as number) || 0,
+        items: orderPayload.items || [],
+        customer_note: message.order?.text || null,
+      })
+      .then(({ error: ordErr }: { error: unknown }) => {
+        if (ordErr) {
+          console.error('[webhook] Failed to record commerce_order:', ordErr)
+        }
+      })
   }
 
   // Replayed delivery: the message already exists, so acknowledge it as a
@@ -1018,14 +1056,8 @@ async function parseMessageContent(
   contentText: string | null
   mediaUrl: string | null
   mediaType: string | null
-  /**
-   * For interactive button / list replies: the stable id of the tapped
-   * option (whatever we put on the button when sending). Used by the
-   * Flows engine to advance the per-contact run; persisted to
-   * `messages.interactive_reply_id` so the inbox bubble can render the
-   * tap with the right affordance. Null for everything else.
-   */
   interactiveReplyId: string | null
+  orderPayload?: Record<string, unknown> | null
 }> {
   // getMediaUrl signature is (mediaId, accessToken) — earlier code had
   // the args swapped, so every verification hit an invalid Meta URL and
@@ -1083,6 +1115,7 @@ async function parseMessageContent(
     mediaUrl: null,
     mediaType: null,
     interactiveReplyId: null,
+    orderPayload: null,
   }
 
   switch (message.type) {
@@ -1203,6 +1236,57 @@ async function parseMessageContent(
         ...empty,
         contentText: label || payload,
         interactiveReplyId: payload || label,
+      }
+    }
+
+    case 'order': {
+      const order = message.order
+      if (order && Array.isArray(order.product_items)) {
+        const itemsCount = order.product_items.reduce(
+          (acc, item) => acc + Number(item.quantity || 1),
+          0
+        )
+        const currency = order.product_items[0]?.currency || 'USD'
+        const totalAmount = order.product_items.reduce(
+          (acc, item) =>
+            acc + Number(item.item_price || 0) * Number(item.quantity || 1),
+          0
+        )
+        const summaryLines = order.product_items
+          .map(
+            (item) =>
+              `• ${item.quantity}x ${item.product_retailer_id} (${currency} ${item.item_price})`
+          )
+          .join('\n')
+
+        const note = order.text ? `\nNote: "${order.text}"` : ''
+        const text = `🛍️ WhatsApp Order (${itemsCount} items — Total: ${currency} ${totalAmount.toFixed(
+          2
+        )})\n${summaryLines}${note}`
+
+        const orderPayload = {
+          kind: 'order_details',
+          catalog_id: order.catalog_id,
+          currency,
+          total_amount: totalAmount,
+          items: order.product_items.map((i) => ({
+            retailer_id: i.product_retailer_id,
+            name: i.product_retailer_id,
+            amount: Number(i.item_price || 0),
+            quantity: Number(i.quantity || 1),
+          })),
+          note: order.text,
+        }
+
+        return {
+          ...empty,
+          contentText: text,
+          orderPayload,
+        }
+      }
+      return {
+        ...empty,
+        contentText: message.order?.text || '🛍️ Order placed from WhatsApp catalog',
       }
     }
 

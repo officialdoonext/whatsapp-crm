@@ -23,6 +23,7 @@ import {
   MessageSquareDashed,
   Zap,
   Smile,
+  ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -61,6 +62,7 @@ import {
 import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
 import type { InteractiveMessagePayload, QuickReply } from "@/types";
 import { QuickReplyPicker } from "./quick-reply-picker";
+import { CatalogPickerDialog } from "./catalog-picker-dialog";
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
@@ -203,8 +205,9 @@ export function MessageComposer({
   const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Interactive-message builder dialog + quick-reply picker.
+  // Interactive-message builder dialog + quick-reply picker + catalog picker.
   const [interactiveOpen, setInteractiveOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [interactivePayload, setInteractivePayload] =
     useState<InteractiveMessagePayload>(blankButtonsPayload);
   const [savingQuickReply, setSavingQuickReply] = useState(false);
@@ -816,6 +819,20 @@ export function MessageComposer({
 
                 <button
                   type="button"
+                  onClick={() => {
+                    setPlusOpen(false);
+                    setCatalogOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <ShoppingBag className="h-4 w-4" />
+                  </span>
+                  <span className="font-medium">WhatsApp Catalog</span>
+                </button>
+
+                <button
+                  type="button"
                   disabled={readOnly || drafting}
                   onClick={() => {
                     setPlusOpen(false);
@@ -993,6 +1010,13 @@ export function MessageComposer({
         open={quickReplyOpen}
         onOpenChange={setQuickReplyOpen}
         onPick={handlePickQuickReply}
+      />
+
+      {/* WhatsApp Catalog & Products picker */}
+      <CatalogPickerDialog
+        open={catalogOpen}
+        onOpenChange={setCatalogOpen}
+        conversationId={conversationId}
       />
     </div>
   );

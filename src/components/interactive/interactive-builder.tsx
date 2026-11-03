@@ -153,7 +153,7 @@ export function InteractiveBuilder({
           {value.kind === "buttons" ? (
             <ButtonsEditor value={value} onChange={onChange} advanced={advanced} />
           ) : (
-            <ListEditor value={value} onChange={onChange} advanced={advanced} />
+            <ListEditor value={value as InteractiveListPayload} onChange={onChange} advanced={advanced} />
           )}
 
           <label className="flex items-center gap-2 text-xs text-muted-foreground">

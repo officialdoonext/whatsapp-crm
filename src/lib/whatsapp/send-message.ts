@@ -30,6 +30,12 @@ import {
   type MediaKind,
 } from '@/lib/whatsapp/meta-api';
 import {
+  sendSingleProductMessage,
+  sendMultiProductMessage,
+  sendCatalogMessage,
+  sendOrderPaymentDetailsMessage,
+} from '@/lib/whatsapp/meta-catalog';
+import {
   validateInteractivePayload,
   interactivePayloadPreviewText,
   type InteractiveMessagePayload,
@@ -53,6 +59,7 @@ export const VALID_MESSAGE_TYPES = [
   'text',
   'template',
   'interactive',
+  'order',
   ...MEDIA_KINDS,
 ] as const;
 
@@ -369,6 +376,62 @@ export async function sendMessageToConversation(
     }
     if (messageType === 'interactive') {
       const p = interactivePayload!;
+      if (p.kind === 'product') {
+        const result = await sendSingleProductMessage({
+          phoneNumberId: config.phone_number_id,
+          accessToken,
+          to: phone,
+          catalogId: p.catalog_id,
+          productRetailerId: p.product_retailer_id,
+          bodyText: p.body,
+          footerText: p.footer,
+          contextMessageId,
+        });
+        return result.messageId;
+      }
+      if (p.kind === 'product_list') {
+        const result = await sendMultiProductMessage({
+          phoneNumberId: config.phone_number_id,
+          accessToken,
+          to: phone,
+          catalogId: p.catalog_id,
+          headerText: p.header,
+          bodyText: p.body,
+          footerText: p.footer,
+          sections: p.sections,
+          contextMessageId,
+        });
+        return result.messageId;
+      }
+      if (p.kind === 'catalog_message') {
+        const result = await sendCatalogMessage({
+          phoneNumberId: config.phone_number_id,
+          accessToken,
+          to: phone,
+          bodyText: p.body,
+          footerText: p.footer,
+          thumbnailProductRetailerId: p.thumbnail_product_retailer_id,
+          contextMessageId,
+        });
+        return result.messageId;
+      }
+      if (p.kind === 'order_details') {
+        const result = await sendOrderPaymentDetailsMessage({
+          phoneNumberId: config.phone_number_id,
+          accessToken,
+          to: phone,
+          referenceId: p.reference_id,
+          totalAmount: p.total_amount,
+          currency: p.currency,
+          items: p.items,
+          bodyText: p.body,
+          footerText: p.footer,
+          paymentGatewayConfigName: p.payment_settings?.payment_gateway?.configuration_name,
+          paymentGatewayType: p.payment_settings?.payment_gateway?.type,
+          contextMessageId,
+        });
+        return result.messageId;
+      }
       if (p.kind === 'buttons') {
         const result = await sendInteractiveButtons({
           phoneNumberId: config.phone_number_id,

@@ -2,23 +2,13 @@
 // Interactive message payload — shared shape + validation.
 //
 // The persisted, round-trippable representation of a WhatsApp
-// interactive message (reply buttons or a list). This is the single
+// interactive message (reply buttons, list, single product, multi-product,
+// catalog link, or order review & pay). This is the single
 // source of truth used by:
-//   - the inbox composer + automation "send interactive" builders,
+//   - the inbox composer + automation builders,
 //   - the send-message core + automation engine (send + persist),
 //   - the message bubble + preview (render),
 //   - quick replies (store an interactive snippet).
-//
-// The field names (`id`/`title`/`description` on buttons/rows) match
-// `meta-api.ts`'s `InteractiveButton` / `InteractiveListRow` /
-// `InteractiveListSection` on purpose, so a payload maps straight onto
-// the Meta send args with no translation.
-//
-// `validateInteractivePayload` mirrors the throws already inside the
-// meta-api senders, but returns a result object so callers (API routes,
-// activation checks) can surface a clean error to the user *before* the
-// network call rather than turning a bad payload into a 400 from Meta
-// mid-conversation.
 // ============================================================
 
 import { INTERACTIVE_LIMITS } from './meta-api'
@@ -68,9 +58,72 @@ export interface InteractiveListPayload {
   sections: InteractiveListSection[]
 }
 
+export interface InteractiveProductPayload {
+  kind: 'product'
+  body: string
+  header?: string
+  footer?: string
+  catalog_id: string
+  product_retailer_id: string
+  product_name?: string
+  product_price?: number
+  product_currency?: string
+  product_image_url?: string
+}
+
+export interface InteractiveProductListSection {
+  title: string
+  product_retailer_ids: string[]
+}
+
+export interface InteractiveProductListPayload {
+  kind: 'product_list'
+  header: string
+  body: string
+  footer?: string
+  catalog_id: string
+  sections: InteractiveProductListSection[]
+}
+
+export interface InteractiveCatalogPayload {
+  kind: 'catalog_message'
+  body: string
+  header?: string
+  footer?: string
+  thumbnail_product_retailer_id?: string
+}
+
+export interface InteractiveOrderDetailsPayload {
+  kind: 'order_details'
+  body: string
+  header?: string
+  footer?: string
+  reference_id: string
+  currency: string
+  total_amount: number
+  items: Array<{
+    retailer_id?: string
+    name: string
+    amount: number
+    quantity: number
+  }>
+  payment_settings?: {
+    type?: string
+    payment_gateway?: {
+      type: string
+      configuration_name?: string
+    }
+    payment_link?: string
+  }
+}
+
 export type InteractiveMessagePayload =
   | InteractiveButtonsPayload
   | InteractiveListPayload
+  | InteractiveProductPayload
+  | InteractiveProductListPayload
+  | InteractiveCatalogPayload
+  | InteractiveOrderDetailsPayload
 
 export type InteractiveValidation =
   | { ok: true }
@@ -102,12 +155,7 @@ function validateHeaderFooter(
 
 /**
  * Validate an interactive payload against Meta's hard limits + our
- * structural rules (non-empty ids/titles, unique ids). Returns a result
- * object rather than throwing so API routes can map it to a 400 with a
- * user-facing message.
- *
- * `unknown` in, narrowed here, so it's safe to call straight on a parsed
- * request body.
+ * structural rules.
  */
 export function validateInteractivePayload(
   payload: unknown,
@@ -116,6 +164,47 @@ export function validateInteractivePayload(
     return fail('Interactive message payload is required.')
   }
   const p = payload as Partial<InteractiveMessagePayload>
+
+  if (p.kind === 'product') {
+    const prod = p as InteractiveProductPayload
+    if (!prod.catalog_id?.trim()) return fail('Catalog ID is required.')
+    if (!prod.product_retailer_id?.trim()) return fail('Product SKU / Retailer ID is required.')
+    return ok()
+  }
+
+  if (p.kind === 'product_list') {
+    const list = p as InteractiveProductListPayload
+    if (!list.catalog_id?.trim()) return fail('Catalog ID is required.')
+    if (!list.header?.trim()) return fail('Header text is required for product list.')
+    if (!list.body?.trim()) return fail('Body text is required for product list.')
+    if (!Array.isArray(list.sections) || list.sections.length === 0) {
+      return fail('At least one product section is required.')
+    }
+    let totalItems = 0
+    for (const sec of list.sections) {
+      if (!sec.title?.trim()) return fail('Section title is required.')
+      if (!Array.isArray(sec.product_retailer_ids) || sec.product_retailer_ids.length === 0) {
+        return fail(`Section "${sec.title}" has no products.`)
+      }
+      totalItems += sec.product_retailer_ids.length
+    }
+    if (totalItems > 30) return fail('A product list allows at most 30 products in total.')
+    return ok()
+  }
+
+  if (p.kind === 'catalog_message') {
+    const cat = p as InteractiveCatalogPayload
+    if (!cat.body?.trim()) return fail('Body text is required for catalog message.')
+    return ok()
+  }
+
+  if (p.kind === 'order_details') {
+    const ord = p as InteractiveOrderDetailsPayload
+    if (!ord.reference_id?.trim()) return fail('Order reference ID is required.')
+    if (!ord.currency?.trim()) return fail('Currency is required.')
+    if (typeof ord.total_amount !== 'number') return fail('Total amount is required.')
+    return ok()
+  }
 
   if (typeof p.body !== 'string' || p.body.trim() === '') {
     return fail('Interactive message body text is required.')
@@ -223,7 +312,7 @@ export function validateInteractivePayload(
     return ok()
   }
 
-  return fail('Interactive message must be reply buttons or a list.')
+  return fail('Interactive message must be buttons, list, product, product list, or catalog message.')
 }
 
 /**
@@ -233,6 +322,18 @@ export function validateInteractivePayload(
 export function interactivePayloadPreviewText(
   payload: InteractiveMessagePayload,
 ): string {
+  if (payload.kind === 'product') {
+    return payload.product_name ? `🛍️ Product: ${payload.product_name}` : '🛍️ Product'
+  }
+  if (payload.kind === 'product_list') {
+    return `🛍️ Collection: ${payload.header || 'Products'}`
+  }
+  if (payload.kind === 'catalog_message') {
+    return '🏪 WhatsApp Catalog'
+  }
+  if (payload.kind === 'order_details') {
+    return `🧾 Payment Request: ${payload.reference_id}`
+  }
   const body = payload.body?.trim()
   if (body) return body
   return payload.kind === 'buttons' ? '[buttons]' : '[list]'

@@ -98,14 +98,17 @@ export async function engineSendInteractive(
       buttons: payload.buttons,
     })
   }
-  return engineSendInteractiveList({
-    ...common,
-    bodyText: payload.body,
-    buttonLabel: payload.button_label,
-    headerText: payload.header,
-    footerText: payload.footer,
-    sections: payload.sections,
-  })
+  if (payload.kind === 'list') {
+    return engineSendInteractiveList({
+      ...common,
+      bodyText: payload.body,
+      buttonLabel: payload.button_label,
+      headerText: payload.header,
+      footerText: payload.footer,
+      sections: payload.sections,
+    })
+  }
+  throw new Error(`Automation interactive sender only supports buttons and lists; got ${payload.kind}`)
 }
 
 type SendInput =

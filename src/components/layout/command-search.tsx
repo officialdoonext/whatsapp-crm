@@ -19,6 +19,7 @@ import {
   Palette,
   Coins,
   Tags,
+  ShoppingBag,
 } from "lucide-react";
 import {
   Dialog,
@@ -45,6 +46,8 @@ const SEARCH_ITEMS: SearchEntry[] = [
   { title: "Notifications", category: "Core", href: "/notifications", icon: Bell },
   { title: "Contacts & Audience", category: "Core", href: "/contacts", icon: Users },
   { title: "Pipelines & Deals", category: "Sales", href: "/pipelines", icon: GitBranch },
+  { title: "Commerce & Orders", category: "Sales", href: "/commerce", icon: ShoppingBag },
+  { title: "Catalog & Payments", category: "Settings", href: "/settings?tab=commerce", icon: ShoppingBag },
   { title: "Broadcast Campaigns", category: "Marketing", href: "/broadcasts", icon: Radio },
   { title: "Automations", category: "Automation", href: "/automations", icon: Zap },
   { title: "Flows Builder", category: "Automation", href: "/flows", icon: Workflow },

@@ -11,6 +11,7 @@ import {
   LayoutTemplate,
   CornerDownLeft,
   Sparkles,
+  ShoppingBag,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -245,6 +246,23 @@ function MessageContent({
         <p className="whitespace-pre-wrap break-words text-sm">
           {message.content_text || t("interactiveReply")}
         </p>
+      );
+    }
+
+    case "order": {
+      if (message.interactive_payload) {
+        return <LocalizedInteractivePreview payload={message.interactive_payload} />;
+      }
+      return (
+        <div className="flex min-w-[220px] flex-col gap-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+            <ShoppingBag className="h-4 w-4" />
+            <span>WhatsApp Catalog Order</span>
+          </div>
+          <p className="whitespace-pre-wrap break-words text-sm">
+            {message.content_text || "Order received from WhatsApp Catalog"}
+          </p>
+        </div>
       );
     }
 

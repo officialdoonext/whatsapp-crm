@@ -8,6 +8,11 @@ export type {
   InteractiveButton,
   InteractiveListRow,
   InteractiveListSection,
+  InteractiveProductPayload,
+  InteractiveProductListPayload,
+  InteractiveProductListSection,
+  InteractiveCatalogPayload,
+  InteractiveOrderDetailsPayload,
 } from "@/lib/whatsapp/interactive";
 
 export interface Profile {
@@ -226,7 +231,9 @@ export type ContentType =
   | 'location'
   | 'template'
   /** Customer tapped a reply button or list row on a message we sent. */
-  | 'interactive';
+  | 'interactive'
+  /** Inbound customer cart or outbound commerce order message. */
+  | 'order';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Message {
@@ -317,6 +324,102 @@ export interface WhatsAppConfig {
    * inbound attachments expire. Migration 039.
    */
   mirror_inbound_media?: boolean;
+  /** Meta Commerce Catalog ID linked to this WhatsApp account. */
+  catalog_id?: string;
+  /** Display name of the linked Meta Commerce Catalog. */
+  catalog_name?: string;
+  /** Timestamp when catalog connection was verified with Meta Graph API. */
+  catalog_connected_at?: string;
+  /** Active payment provider for WhatsApp in-chat and link payments. */
+  payment_provider?: PaymentProvider;
+  /** Encrypted or structured keys for configured payment gateways. */
+  payment_config?: PaymentConfig;
+  /** Whether to automatically create and reply with a payment link upon cart submission. */
+  auto_create_payment_link?: boolean;
+}
+
+export type PaymentProvider =
+  | 'whatsapp_pay'
+  | 'razorpay'
+  | 'stripe'
+  | 'upi_manual'
+  | 'manual';
+
+export interface PaymentConfig {
+  razorpay?: {
+    key_id: string;
+    key_secret: string;
+  };
+  stripe?: {
+    publishable_key: string;
+    secret_key: string;
+  };
+  whatsapp_pay?: {
+    payment_configuration_name: string;
+  };
+  upi_manual?: {
+    upi_id: string;
+    merchant_name: string;
+  };
+}
+
+export interface CommerceProduct {
+  id: string;
+  account_id: string;
+  catalog_id: string;
+  retailer_id: string;
+  name: string;
+  description?: string | null;
+  price: number;
+  currency: string;
+  image_url?: string | null;
+  url?: string | null;
+  availability: 'in stock' | 'out of stock';
+  category?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommerceOrderItem {
+  retailer_id: string;
+  name: string;
+  quantity: number;
+  item_price: number;
+  currency: string;
+  image_url?: string;
+}
+
+export type OrderStatus =
+  | 'pending'
+  | 'processing'
+  | 'paid'
+  | 'completed'
+  | 'cancelled';
+
+export interface CommerceOrder {
+  id: string;
+  account_id: string;
+  conversation_id?: string | null;
+  contact_id?: string | null;
+  whatsapp_message_id?: string | null;
+  catalog_id?: string | null;
+  order_reference: string;
+  status: OrderStatus;
+  currency: string;
+  subtotal: number;
+  tax: number;
+  shipping: number;
+  total_amount: number;
+  items: CommerceOrderItem[];
+  customer_note?: string | null;
+  payment_provider?: string | null;
+  payment_link_url?: string | null;
+  payment_id?: string | null;
+  paid_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  contact?: Contact;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)
