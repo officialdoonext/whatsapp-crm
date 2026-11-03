@@ -1,0 +1,1211 @@
+================================================================================
+WHATSAPP CRM (WACRM) - MOBILE APP COMPLETE API & FEATURE INTEGRATION GUIDE
+================================================================================
+Document Version : 1.0.0
+Architecture     : Next.js 16 + Supabase (PostgreSQL, Auth, Storage, Realtime) + Meta Cloud API
+Target           : Mobile App Development (React Native / Flutter / Swift / Kotlin)
+File Type        : Comprehensive API & Screen Architecture Specification (.txt)
+================================================================================
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. ARCHITECTURE & MOBILE INTEGRATION STRATEGY
+   1.1 Direct Supabase SDK vs Next.js Server Endpoints vs Public REST API (/api/v1)
+   1.2 Mobile Authentication & Session Management
+   1.3 Row-Level Security (RLS) & Multi-Tenant Data Isolation
+   1.4 Supabase Realtime Channels (Live Incoming Messages & Alerts)
+   1.5 Supabase Storage Integration (Chat Media & Attachments)
+   1.6 Meta WhatsApp Cloud API Constraints (24-Hour Session Window)
+
+2. SCREEN-BY-SCREEN FUNCTIONALITY & API INTEGRATION
+   2.1 SCREEN 1: Authentication & Onboarding
+       - Login, Signup, Forgot Password, Reset Password, Team Invite Join
+   2.2 SCREEN 2: Dashboard / Analytics Overview
+       - Metric Cards, Daily Trends, Pipeline Funnel, Activity Feed
+   2.3 SCREEN 3: Shared Inbox - Conversation List
+       - Thread List, Status Tabs, Search, Tag Filters, Unread Badges, Realtime
+   2.4 SCREEN 4: Shared Inbox - Active Chat Thread
+       - Message Bubbles, Status Ticks, Quoting, Emoji Reactions, Lightbox, 24h Window
+   2.5 SCREEN 5: Shared Inbox - Message Composer & Attachments
+       - Send Text, Upload Media, Meta Templates, Quick Replies, AI Reply Drafter
+   2.6 SCREEN 6: Shared Inbox - Contact Sidebar / Info Sheet
+       - Contact Attributes, Tag Management, Notes History, Linked Deals
+   2.7 SCREEN 7: Shared Inbox - Thread Actions
+       - Status Toggle, Agent Assignment, AI Bot Takeover & Handoff
+   2.8 SCREEN 8: Contacts Directory
+       - Contact List, Search, Tag Filters, Create/Edit/Delete, Custom Fields
+   2.9 SCREEN 9: Pipelines & Deals (CRM Sales Funnel)
+       - Pipeline Stages, Deal Cards, Move Stage, Deal CRUD, Mark Won/Lost
+   2.10 SCREEN 10: Broadcasts & Campaigns
+        - Campaign List, Stats Tracker, New Broadcast with Template & Audience
+   2.11 SCREEN 11: Automations & Visual Flows
+        - View Automations, Toggle Active/Inactive, View Execution Logs
+   2.12 SCREEN 12: AI Assistant & Playground
+        - AI Status, Configuration, Token Usage, Playground Testing
+   2.13 SCREEN 13: Notifications & Realtime Alerts
+        - Notification List, Unread Counter, Mark Read, Direct Navigation
+   2.14 SCREEN 14: Settings & Team Management
+        - User Profile, WhatsApp Business Status, Meta Templates, Quick Replies, Team
+
+3. COMPLETE DATABASE SCHEMA & FIELD REFERENCE
+4. REALTIME EVENT SUBSCRIPTION MATRIX
+5. ERROR CODES & EDGE CASES REFERENCE
+
+
+================================================================================
+1. ARCHITECTURE & MOBILE INTEGRATION STRATEGY
+================================================================================
+
+1.1 THE TWO API INTEGRATION OPTIONS FOR MOBILE
+
+Your web CRM utilizes a hybrid architecture:
+  A. Supabase (PostgreSQL + Auth + Storage + Realtime): Directly handles 90% of
+     all database queries (Reads, Inserts, Updates, Deletes) using Row Level
+     Security (RLS).
+  B. Next.js Server API Routes: Handles sensitive third-party interactions that
+     require server secrets (Meta WhatsApp Cloud API sending, AI generation,
+     encryption, rate limiting).
+  C. Public REST API (/api/v1): Headless API authenticated with API Keys
+     (Bearer wacrm_live_...), useful for integrations.
+
+RECOMMENDED MOBILE APP ARCHITECTURE (Option A + B):
+  - Use the official Supabase Client SDK for your mobile framework:
+    * React Native: @supabase/supabase-js
+    * Flutter: supabase_flutter
+    * Swift (iOS): Supabase-Swift
+    * Kotlin (Android): supabase-kt
+  - Mobile user signs in with email/password via Supabase Auth.
+  - The mobile app performs direct reads/writes for Contacts, Notes, Deals,
+    Pipelines, Tags, and Notifications via Supabase client.
+  - Supabase Realtime delivers instantaneous chat messages, reactions, and badges.
+  - For sending WhatsApp messages, media uploads, and AI drafting, the mobile app
+    calls your Next.js backend API routes passing the Supabase Auth session token.
+
+
+1.2 MOBILE AUTHENTICATION & SESSION LIFECYCLE
+
+Step 1: Sign in user
+  Method: supabase.auth.signInWithPassword({ email, password })
+  Response returns: session.access_token (JWT), session.refresh_token, user.id.
+
+Step 2: Fetch user profile & tenancy
+  Query:
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, avatar_url, account_id, account_role, status, expiry_date')
+      .eq('user_id', session.user.id)
+      .single();
+
+  Store in mobile local state / secure storage:
+    - account_id  : The tenant ID for all operations
+    - account_role: 'owner' | 'admin' | 'agent' | 'viewer'
+    - status      : Must be 'active' to access data
+
+Step 3: Authenticating API requests to your Next.js backend
+  When calling Next.js routes (like /api/whatsapp/send):
+  Pass the user's Supabase JWT access token in the headers:
+    Authorization: Bearer <session.access_token>
+  Or configure your mobile HTTP client to pass Supabase cookie headers.
+
+
+1.3 ROW-LEVEL SECURITY (RLS) IN MOBILE
+
+- Every table in PostgreSQL has RLS enabled.
+- Queries executed through the Supabase Mobile SDK automatically apply the
+  caller's `auth.uid()` and filter data exclusively to the caller's `account_id`.
+- You never need to worry about one company/account seeing another company's data.
+
+
+1.4 SUPABASE REALTIME WEBSOCKETS
+
+- Enables live WhatsApp chat without polling.
+- Mobile connects to Supabase Realtime using WebSocket.
+- Handled via `supabase.channel(...)` listeners on table changes (`INSERT`, `UPDATE`, `DELETE`).
+
+
+1.5 SUPABASE STORAGE (MEDIA ATTACHMENTS)
+
+- Bucket Name: `chat-media` (Public bucket)
+- Path convention required by RLS:
+    account-<account_id>/<timestamp>-<sanitized_file_name>.<ext>
+- Upload file binary directly to Supabase Storage, retrieve the Public URL,
+  and supply `media_url` to the WhatsApp send endpoint.
+
+
+1.6 META WHATSAPP 24-HOUR CUSTOMER SESSION WINDOW
+
+- WhatsApp Business Cloud API Policy:
+  When a customer sends a message, a 24-hour service window opens.
+  * Within 24 hours: Agents can send free-form text, images, videos, audio, documents.
+  * After 24 hours: Free-form messages are REJECTED by Meta. You can ONLY send
+    pre-approved Meta Message Templates.
+- Mobile implementation rule:
+  Calculate: difference in hours between `now()` and the last customer message's `created_at`.
+  If >= 24 hours, disable standard text input and display a button:
+  "24h session expired. Send a Template to re-open conversation".
+
+
+================================================================================
+2. SCREEN-BY-SCREEN FUNCTIONALITY & API INTEGRATION
+================================================================================
+
+--------------------------------------------------------------------------------
+2.1 SCREEN 1: AUTHENTICATION & ONBOARDING
+--------------------------------------------------------------------------------
+Primary UI Screens:
+  1. Login Screen
+  2. Signup Screen
+  3. Forgot Password Screen
+  4. Reset Password Screen
+  5. Join Team Screen (Invite Link)
+
+A. LOGIN FUNCTIONALITY:
+   - Inputs: Email address, Password.
+   - Action:
+       const { data, error } = await supabase.auth.signInWithPassword({
+         email: email.trim(),
+         password: password,
+       });
+   - Post-login: Query `profiles` table by `user_id: data.user.id`.
+     Verify `status !== 'inactive'`. Store `account_id` and `account_role`.
+     Navigate to Dashboard or Inbox.
+
+B. SIGNUP FUNCTIONALITY:
+   - Inputs: Full Name, Email address, Password.
+   - Action:
+       const { data, error } = await supabase.auth.signUp({
+         email,
+         password,
+         options: {
+           data: { full_name: fullName }
+         }
+       });
+   - Supabase trigger automatically creates the `profiles` and initial `accounts` record.
+
+C. FORGOT PASSWORD (OTP / EMAIL RESET):
+   - Option 1 (Supabase native):
+       await supabase.auth.resetPasswordForEmail(email, {
+         redirectTo: 'yourapp://reset-password',
+       });
+   - Option 2 (In-app custom 6-digit code via Next.js API):
+       POST /api/auth/forgot-password/send-code
+       Body: { "email": "user@example.com" }
+       POST /api/auth/forgot-password/verify-and-reset
+       Body: { "email": "user@example.com", "code": "123456", "new_password": "..." }
+
+D. JOIN TEAM VIA INVITATION LINK:
+   - Deep link URL format: `yourapp://join/<invite_token>`
+   - Peek Invitation details (no auth required):
+       GET /api/invitations/<token>/peek
+       Response: { "account_name": "Acme Inc", "role": "agent", "expires_at": "..." }
+   - Redeem Invitation (user signed in):
+       POST /api/invitations/<token>/redeem
+       Response: { "ok": true, "account_id": "uuid" }
+
+
+--------------------------------------------------------------------------------
+2.2 SCREEN 2: DASHBOARD / ANALYTICS OVERVIEW
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Metric Card 1: Active Conversations (Count of open conversations vs yesterday)
+  - Metric Card 2: New Contacts Today (Count of contacts created today vs yesterday)
+  - Metric Card 3: Open Deals Value & Count (Sum of open deal values + deal count)
+  - Metric Card 4: Messages Sent Today (Count of agent messages sent today vs yesterday)
+  - Volume Trend Chart: Inbound vs Outbound messages (7 / 30 / 90 days filter)
+  - Pipeline Funnel / Donut: Total value and count grouped by pipeline stage
+  - Response Time: Average & median first-response time in minutes
+  - Activity Feed: List of recent events (messages, deals won, contacts created)
+
+HOW TO FETCH / READ DASHBOARD DATA:
+
+1. Metric Cards:
+   Run parallel Supabase counts:
+   const todayStart = new Date();
+   todayStart.setHours(0,0,0,0);
+   const todayIso = todayStart.toISOString();
+
+   // Active Conversations:
+   supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('status', 'open')
+
+   // New Contacts Today:
+   supabase.from('contacts').select('id', { count: 'exact', head: true }).gte('created_at', todayIso)
+
+   // Open Deals Value:
+   const { data: deals } = await supabase.from('deals').select('value, status').eq('status', 'open');
+   const totalValue = deals.reduce((acc, curr) => acc + (curr.value || 0), 0);
+
+   // Messages Sent Today:
+   supabase.from('messages').select('id', { count: 'exact', head: true }).eq('sender_type', 'agent').gte('created_at', todayIso)
+
+2. Pipeline Funnel Breakdown:
+   Query deals with pipeline stages:
+     const { data: stages } = await supabase
+       .from('pipeline_stages')
+       .select('id, name, color, position')
+       .order('position', { ascending: true });
+
+     const { data: openDeals } = await supabase
+       .from('deals')
+       .select('stage_id, value')
+       .eq('status', 'open');
+
+     Aggregate on mobile: Group deals by `stage_id`, calculate count and sum(value).
+
+3. Recent Activity Feed:
+   Query the latest 30 messages and deals:
+     const { data: recentMessages } = await supabase
+       .from('messages')
+       .select('id, sender_type, content_text, created_at, conversation:conversations(contact:contacts(name, phone))')
+       .order('created_at', { ascending: false })
+       .limit(20);
+
+
+--------------------------------------------------------------------------------
+2.3 SCREEN 3: SHARED INBOX - CONVERSATION LIST
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Top Tabs: All / Open / Pending / Closed
+  - Search Bar: Filter conversations by Contact Name or Phone number
+  - Filter by Tag: Filter conversations matching selected Tag IDs
+  - Filter by Assignee: "Assigned to Me" / "Unassigned" / "All Agents"
+  - Conversation List Card:
+    * Contact Avatar / Initial
+    * Contact Name (or WhatsApp phone number / @handle)
+    * Last message preview text
+    * Timestamp (e.g. "10:45 AM", "Yesterday")
+    * Unread message counter badge (green circle with count)
+    * Assigned agent avatar or unassigned icon
+    * Status pill (Open, Pending, Closed)
+    * Attached contact tags (colored pills)
+    * AI auto-reply active badge (if bot is handling)
+  - Pull-to-Refresh: Refetches conversations from DB
+  - Floating Action Button (FAB): "Start New Chat" -> opens contact picker or phone input
+
+HOW TO FETCH / READ CONVERSATIONS:
+
+Query:
+  let query = supabase
+    .from('conversations')
+    .select(`
+      id,
+      status,
+      assigned_agent_id,
+      last_message_text,
+      last_message_at,
+      unread_count,
+      ai_autoreply_disabled,
+      ai_reply_count,
+      created_at,
+      updated_at,
+      contact:contacts (
+        id,
+        name,
+        phone,
+        wa_username,
+        avatar_url,
+        company,
+        contact_tags (
+          tag:tags ( id, name, color )
+        )
+      )
+    `)
+    .order('last_message_at', { ascending: false });
+
+  // Filter by status tab:
+  if (statusFilter !== 'all') {
+    query = query.eq('status', statusFilter); // 'open' | 'pending' | 'closed'
+  }
+
+  // Filter by assigned agent:
+  if (assignedFilter === 'me') {
+    query = query.eq('assigned_agent_id', currentUserId);
+  } else if (assignedFilter === 'unassigned') {
+    query = query.is('assigned_agent_id', null);
+  }
+
+REALTIME SUBSCRIPTION FOR CONVERSATION LIST:
+  Subscribe to table `conversations`:
+    const channel = supabase
+      .channel('public:conversations')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'conversations',
+      }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          // New conversation arrived: fetch full joined row and prepend to list
+          fetchSingleConversation(payload.new.id);
+        } else if (payload.eventType === 'UPDATE') {
+          // Update last_message_text, last_message_at, unread_count, status
+          updateConversationInState(payload.new);
+        }
+      })
+      .subscribe();
+
+
+--------------------------------------------------------------------------------
+2.4 SCREEN 4: SHARED INBOX - ACTIVE CHAT THREAD
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Header:
+    * Back button (returns to conversation list)
+    * Contact Name, Phone Number, Online presence dot
+    * Assigned Agent dropdown (tap to assign to me or teammate)
+    * Conversation status selector (Open / Pending / Closed)
+    * Contact Info Drawer trigger (Info "i" button)
+  - 24-Hour Session Banner:
+    * Countdown timer if customer messaged within 24h
+    * Warning banner if expired ("24h window closed. You must send a template.")
+  - AI Auto-Reply Banner:
+    * If bot active: "AI Auto-reply is active. [Take Over]"
+    * If human took over: "Human agent in control. [Resume AI]"
+  - Chat Bubble List:
+    * Incoming message (Left aligned, light gray/white)
+    * Outgoing message (Right aligned, green theme)
+    * Support for all Content Types:
+      - 'text'       : Plain text bubble with clickable URLs
+      - 'image'      : Thumbnail image, tap to view full screen in Lightbox
+      - 'video'      : Video thumbnail with play button
+      - 'audio'      : Audio player with waveform / play button & duration
+      - 'document'   : File icon, filename, file size, tap to open/download
+      - 'template'   : Meta template card (Header + Body + Buttons)
+      - 'interactive': WhatsApp Reply Buttons or List Menu
+    * Quoted Reply Preview: Shows message being replied to
+    * Delivery Status Ticks (for outgoing messages):
+      - 'sending'  : Clock icon (optimistic)
+      - 'sent'     : Single gray checkmark
+      - 'delivered': Double gray checkmark
+      - 'read'     : Double blue checkmark
+      - 'failed'   : Red exclamation mark with error tooltip
+    * Emoji Reactions: Displays reactions below bubble (tap to react with emoji)
+
+HOW TO FETCH / READ MESSAGES:
+
+Query messages for active conversation:
+  const { data: messages, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true });
+
+Query reactions for conversation:
+  const { data: reactions } = await supabase
+    .from('message_reactions')
+    .select('*')
+    .eq('conversation_id', conversationId);
+
+RESET UNREAD COUNT ON OPENING THREAD:
+  When mobile user opens this thread:
+    await supabase
+      .from('conversations')
+      .update({ unread_count: 0 })
+      .eq('id', conversationId);
+
+REALTIME SUBSCRIPTION FOR MESSAGES & STATUS:
+  Subscribe to new messages in the open conversation:
+    const msgChannel = supabase
+      .channel(`chat:${conversationId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      }, (payload) => {
+        // Append incoming or confirmed message to message list
+        appendMessage(payload.new);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      }, (payload) => {
+        // Update message status ('delivered', 'read', 'failed')
+        updateMessageStatus(payload.new.id, payload.new.status, payload.new.error_title);
+      })
+      .subscribe();
+
+EMOJI REACTIONS API:
+  Send emoji reaction to a message:
+    POST /api/whatsapp/react
+    Headers: Authorization: Bearer <token>
+    Body:
+    {
+      "message_id": "<uuid_of_message>",
+      "emoji": "👍"   // Or "" (empty string) to remove reaction
+    }
+
+
+--------------------------------------------------------------------------------
+2.5 SCREEN 5: SHARED INBOX - MESSAGE COMPOSER & ATTACHMENTS
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Text Input box (multiline auto-grow)
+  - Quoted Reply preview bar (shows target message when user swipes to reply)
+  - Attachment Menu (+) / Action Sheet:
+    * Camera (Take photo/video)
+    * Gallery (Choose photo/video)
+    * Document (PDF, docx, etc.)
+    * Audio / Voice Note Recorder
+    * Send Template (opens template selector)
+    * Quick Replies (opens canned snippet picker)
+    * AI Draft (generates smart response based on chat history)
+  - Voice Recording Button: Tap and hold to record audio note, release to send
+  - Send Button: Active when text or attachment is present
+
+HOW TO SEND TEXT MESSAGES:
+
+Endpoint: POST /api/whatsapp/send
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer <session.access_token>
+Body:
+  {
+    "conversation_id": "<conversation_uuid>",
+    "message_type": "text",
+    "content_text": "Hello, how can I help you today?",
+    "reply_to_message_id": "<optional_uuid_of_quoted_message>"
+  }
+
+HOW TO SEND MEDIA (IMAGES, VIDEOS, AUDIO, DOCUMENTS):
+
+Step 1: Upload media file to Supabase Storage
+  Bucket: 'chat-media'
+  Path: `account-${accountId}/${Date.now()}-${safeFileName}`
+
+  const { data: uploadData, error: uploadErr } = await supabase
+    .storage
+    .from('chat-media')
+    .upload(path, fileBinary, {
+      contentType: mimeType,
+      upsert: false
+    });
+
+Step 2: Obtain Public URL
+  const { data: { publicUrl } } = supabase
+    .storage
+    .from('chat-media')
+    .getPublicUrl(path);
+
+Step 3: Call Send API
+  POST /api/whatsapp/send
+  Body:
+    {
+      "conversation_id": "<conversation_uuid>",
+      "message_type": "image", // 'image' | 'video' | 'audio' | 'document'
+      "media_url": publicUrl,
+      "content_text": "Caption text goes here",
+      "filename": "document_name.pdf", // Required for document
+      "reply_to_message_id": "<optional_uuid>"
+    }
+
+HOW TO SEND META MESSAGE TEMPLATES:
+
+Endpoint: POST /api/whatsapp/send
+Body:
+  {
+    "conversation_id": "<conversation_uuid>",
+    "message_type": "template",
+    "template_name": "welcome_offer",
+    "template_language": "en_US",
+    "template_params": ["John", "20% OFF"] // Positional {{1}}, {{2}} values
+  }
+
+HOW TO USE QUICK REPLIES:
+
+Fetch quick replies:
+  GET /api/quick-replies
+  Response:
+    {
+      "quick_replies": [
+        { "id": "uuid", "title": "Greeting", "content_text": "Hi! Thanks for reaching out..." }
+      ]
+    }
+Tapping a quick reply inserts its text directly into the mobile text composer!
+
+HOW TO GENERATE AI DRAFT REPLIES:
+
+Endpoint: POST /api/ai/draft
+Headers: Authorization: Bearer <token>
+Body:
+  { "conversation_id": "<conversation_uuid>" }
+Response:
+  { "draft": "Hello! Based on your request, here are the details..." }
+Action: Populates the text input field with the AI-suggested draft for the agent
+to review, edit, and send!
+
+
+--------------------------------------------------------------------------------
+2.6 SCREEN 6: SHARED INBOX - CONTACT SIDEBAR / INFO BOTTOM SHEET
+--------------------------------------------------------------------------------
+Features on Screen (Rendered as a slide-over drawer or bottom sheet on mobile):
+  - Contact Profile Header: Avatar, Name, WhatsApp Phone / @username, Email, Company
+  - Quick Actions: Copy Phone, Call, Open in WhatsApp
+  - Assigned Agent selector
+  - Tags Section:
+    * List of current tags attached to this contact
+    * "+ Add Tag" button -> dropdown of available tags
+    * "x" on tag chip to remove tag
+  - Linked Deals Section:
+    * List of deals associated with this contact (Title, Value, Pipeline Stage)
+    * "+ Add Deal" button -> opens Deal Creation modal
+  - Internal Notes Section:
+    * List of internal agent notes with timestamps and author
+    * Add Note text box + "Save Note" button
+
+HOW TO FETCH CONTACT DATA & LINKED OBJECTS:
+
+1. Fetch Contact Details:
+   const { data: contact } = await supabase
+     .from('contacts')
+     .select('*')
+     .eq('id', contactId)
+     .single();
+
+2. Fetch Tags Attached to Contact:
+   const { data: contactTags } = await supabase
+     .from('contact_tags')
+     .select('id, tag_id, tag:tags(id, name, color)')
+     .eq('contact_id', contactId);
+
+3. Fetch Contact Notes:
+   const { data: notes } = await supabase
+     .from('contact_notes')
+     .select('*')
+     .eq('contact_id', contactId)
+     .order('created_at', { ascending: false });
+
+4. Fetch Contact Deals:
+   const { data: deals } = await supabase
+     .from('deals')
+     .select('*, stage:pipeline_stages(name, color)')
+     .eq('contact_id', contactId)
+     .order('created_at', { ascending: false });
+
+HOW TO ADD / REMOVE TAGS:
+  Add Tag:
+    POST /api/contacts/<contact_id>/tags
+    Body: { "tag_id": "<tag_uuid>" }
+
+  Remove Tag:
+    DELETE /api/contacts/<contact_id>/tags
+    Body: { "tag_id": "<tag_uuid>" }
+
+HOW TO ADD AN INTERNAL NOTE:
+  await supabase
+    .from('contact_notes')
+    .insert({
+      contact_id: contactId,
+      user_id: currentUserId,
+      note_text: noteText.trim()
+    });
+
+
+--------------------------------------------------------------------------------
+2.7 SCREEN 7: SHARED INBOX - THREAD ACTIONS
+--------------------------------------------------------------------------------
+Features:
+  A. Change Conversation Status:
+     Toggle between 'open', 'pending', and 'closed'.
+     Update Query:
+       await supabase
+         .from('conversations')
+         .update({ status: newStatus }) // 'open' | 'pending' | 'closed'
+         .eq('id', conversationId);
+
+  B. Assign Conversation to Agent:
+     Select agent from team roster or unassign:
+     Update Query:
+       await supabase
+         .from('conversations')
+         .update({ assigned_agent_id: selectedAgentId || null })
+         .eq('id', conversationId);
+     (Note: This automatically triggers a notification to the assigned agent!)
+
+  C. AI Bot Takeover / Handoff:
+     Pause AI auto-reply when a human agent wants to take over:
+       POST /api/ai/autoreply/<conversationId>
+       Body: { "paused": true, "assign_to_me": true }
+     Resume AI bot:
+       POST /api/ai/autoreply/<conversationId>
+       Body: { "paused": false }
+
+
+--------------------------------------------------------------------------------
+2.8 SCREEN 8: CONTACTS DIRECTORY
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Search Header: Search by contact name, phone number, or email
+  - Filter by Tag: Select one or multiple tags
+  - Contact List Item:
+    * Avatar / Initial
+    * Full Name
+    * WhatsApp Phone Number
+    * Company name
+    * Tag chips
+    * Tap to open Contact Detail Screen / Bottom Sheet
+  - Floating Action Button (FAB): "+ New Contact"
+  - Swipe Actions on list items: Call, WhatsApp Message, Delete
+
+HOW TO FETCH CONTACTS (WITH PAGINATION & SEARCH):
+
+Query (Standard):
+  const PAGE_SIZE = 25;
+  const from = page * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  let query = supabase
+    .from('contacts')
+    .select('*, contact_tags(tag:tags(*))', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  if (searchTerm.trim()) {
+    const like = `%${searchTerm.trim()}%`;
+    query = query.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`);
+  }
+
+  const { data: contacts, count, error } = await query;
+
+Query (Filtered by Tag IDs):
+  Call PostgreSQL RPC function `filter_contacts_by_tags`:
+  const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
+    p_tag_ids: selectedTagIds,
+    p_search: searchTerm || null,
+    p_limit: PAGE_SIZE,
+    p_offset: from,
+  });
+
+CREATE CONTACT:
+  Insert into `contacts`:
+    const { data: newContact, error } = await supabase
+      .from('contacts')
+      .insert({
+        account_id: accountId,
+        user_id: currentUserId,
+        phone: phone.trim(),     // Must be E.164 (e.g. +14155552671)
+        name: name.trim() || null,
+        email: email.trim() || null,
+        company: company.trim() || null,
+      })
+      .select()
+      .single();
+
+UPDATE CONTACT:
+  Update `contacts`:
+    await supabase
+      .from('contacts')
+      .update({
+        name: updatedName,
+        email: updatedEmail,
+        company: updatedCompany,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', contactId);
+
+DELETE CONTACT:
+  await supabase
+    .from('contacts')
+    .delete()
+    .eq('id', contactId);
+
+START CONVERSATION FROM CONTACT:
+  To initiate a chat with a contact from the Contacts screen:
+  1. Check if a conversation already exists:
+     const { data: existingConv } = await supabase
+       .from('conversations')
+       .select('id')
+       .eq('contact_id', contactId)
+       .maybeSingle();
+  2. If found -> Navigate directly to Chat Thread Screen with `existingConv.id`.
+  3. If not found -> Create conversation or send initial message/template:
+     POST /api/whatsapp/send
+     Body: { "contact_id": contactId, "message_type": "template", ... }
+
+
+--------------------------------------------------------------------------------
+2.9 SCREEN 9: PIPELINES & DEALS (CRM SALES FUNNEL)
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Pipeline Selector (Dropdown/tab if account has multiple pipelines)
+  - Horizontal Scrolling Stage Columns (e.g. "New Lead" -> "Qualified" -> "Proposal" -> "Won" -> "Lost")
+  - Stage Column Header: Stage Name, Total Deal Count, Sum of Deal Values
+  - Deal Card:
+    * Deal Title (e.g. "Acme Corp - Enterprise Plan")
+    * Deal Value formatted with currency (e.g. "$5,000")
+    * Associated Contact Name & Phone
+    * Assigned Agent Avatar
+    * Expected Close Date
+    * Status badge ('open', 'won', 'lost')
+  - Drag-and-Drop or Tap Action: "Move to Next Stage" / "Mark as Won" / "Mark as Lost"
+  - Floating Action Button (FAB): "+ New Deal"
+
+HOW TO FETCH PIPELINE & DEALS:
+
+1. Fetch Pipelines:
+   const { data: pipelines } = await supabase
+     .from('pipelines')
+     .select('*')
+     .order('created_at', { ascending: true });
+
+2. Fetch Stages for Selected Pipeline:
+   const { data: stages } = await supabase
+     .from('pipeline_stages')
+     .select('*')
+     .eq('pipeline_id', activePipelineId)
+     .order('position', { ascending: true });
+
+3. Fetch Deals:
+   const { data: deals } = await supabase
+     .from('deals')
+     .select(`
+       *,
+       contact:contacts(id, name, phone),
+       stage:pipeline_stages(id, name, color),
+       assignee:profiles!deals_assigned_to_fkey(id, full_name, avatar_url)
+     `)
+     .eq('pipeline_id', activePipelineId)
+     .order('created_at', { ascending: false });
+
+CREATE DEAL:
+  await supabase
+    .from('deals')
+    .insert({
+      pipeline_id: activePipelineId,
+      stage_id: stageId,
+      contact_id: contactId || null,
+      title: title.trim(),
+      value: parseFloat(value) || 0,
+      currency: 'USD',
+      notes: notes || null,
+      expected_close_date: closeDateIso || null,
+      assigned_to: assignedUserId || null,
+      status: 'open'
+    });
+
+UPDATE DEAL / MOVE STAGE:
+  // Moving to another stage:
+  await supabase
+    .from('deals')
+    .update({ stage_id: newStageId })
+    .eq('id', dealId);
+
+  // Marking Deal as Won or Lost:
+  await supabase
+    .from('deals')
+    .update({ status: 'won' }) // or 'lost'
+    .eq('id', dealId);
+
+DELETE DEAL:
+  await supabase
+    .from('deals')
+    .delete()
+    .eq('id', dealId);
+
+
+--------------------------------------------------------------------------------
+2.10 SCREEN 10: BROADCASTS & CAMPAIGNS
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Broadcast Campaign List:
+    * Campaign Name
+    * Meta Template Used
+    * Status Badge ('draft', 'scheduled', 'sending', 'sent', 'failed')
+    * Counters Bar: Total Recipients, Sent, Delivered, Read, Replied, Failed
+    * Created / Scheduled date
+  - "+ New Broadcast" Campaign Flow:
+    1. Campaign Name input
+    2. Choose Meta-approved Template (fetched from `message_templates` where `status='APPROVED'`)
+    3. Choose Target Audience (All contacts, or Filter by Tag)
+    4. Fill in Template Variables (e.g. {{1}} = First Name)
+    5. Review & Launch Now (or Schedule for later)
+  - Broadcast Detail Screen:
+    * Live progress circle (% delivered, % read)
+    * Table/List of individual recipient statuses
+
+HOW TO FETCH BROADCASTS:
+  const { data: broadcasts } = await supabase
+    .from('broadcasts')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+HOW TO FETCH APPROVED TEMPLATES:
+  const { data: templates } = await supabase
+    .from('message_templates')
+    .select('*')
+    .eq('status', 'APPROVED')
+    .order('name', { ascending: true });
+
+HOW TO LAUNCH A BROADCAST:
+  Endpoint: POST /api/v1/broadcasts  (or POST /api/whatsapp/broadcast)
+  Headers: Authorization: Bearer <token>
+  Body:
+    {
+      "name": "Summer Special Promotion",
+      "template_name": "summer_promo_2026",
+      "template_language": "en_US",
+      "recipients": [
+        { "to": "+14155550101", "params": ["Alice"] },
+        { "to": "+14155550102", "params": ["Bob"] }
+      ]
+    }
+
+HOW TO TRACK BROADCAST PROGRESS:
+  Poll or fetch detail:
+    GET /api/v1/broadcasts/<broadcast_id>
+  Or query directly from Supabase:
+    const { data: broadcast } = await supabase
+      .from('broadcasts')
+      .select('*')
+      .eq('id', broadcastId)
+      .single();
+
+    const { data: recipients } = await supabase
+      .from('broadcast_recipients')
+      .select('*, contact:contacts(name, phone)')
+      .eq('broadcast_id', broadcastId)
+      .order('created_at', { ascending: false });
+
+
+--------------------------------------------------------------------------------
+2.11 SCREEN 11: AUTOMATIONS & VISUAL FLOWS
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Automations List:
+    * Automation Name & Description
+    * Trigger Badge (e.g. "Keyword Match", "New Message", "Tag Added")
+    * Active / Inactive Switch Toggle
+    * Total Execution Count & Last Executed timestamp
+  - Execution Logs Screen (`/automations/:id/logs`):
+    * Audit trail of automated executions
+    * Trigger event, contact who triggered it, steps executed, success/failed status
+
+HOW TO FETCH AUTOMATIONS:
+  const { data: automations } = await supabase
+    .from('automations')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+HOW TO TOGGLE AUTOMATION ON / OFF:
+  await supabase
+    .from('automations')
+    .update({ is_active: !currentIsActive })
+    .eq('id', automationId);
+
+HOW TO FETCH EXECUTION LOGS:
+  const { data: logs } = await supabase
+    .from('automation_logs')
+    .select('*, contact:contacts(name, phone)')
+    .eq('automation_id', automationId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+
+--------------------------------------------------------------------------------
+2.12 SCREEN 12: AI ASSISTANT & PLAYGROUND
+--------------------------------------------------------------------------------
+Features on Screen:
+  - AI Configuration Status:
+    * Model in use (e.g., gpt-4o, claude-3-5-sonnet)
+    * Status: Active / Inactive
+    * Auto-Reply Bot status (Enabled/Disabled + Max reply cap per conversation)
+  - AI Playground:
+    * Test chat simulator to test how the AI bot responds to customer questions
+    * Uses the business's custom knowledge base
+  - AI Usage & Cost Analytics:
+    * Total prompts, total tokens used, monthly cost estimation
+
+HOW TO FETCH AI CONFIG:
+  GET /api/ai/config
+  Response:
+    {
+      "configured": true,
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "is_active": true,
+      "auto_reply_enabled": true,
+      "auto_reply_max_messages": 5
+    }
+
+HOW TO TEST AI IN PLAYGROUND:
+  POST /api/ai/playground
+  Body:
+    { "message": "What are your business hours?" }
+  Response:
+    { "reply": "Our business hours are Monday to Friday, 9 AM to 6 PM." }
+
+
+--------------------------------------------------------------------------------
+2.13 SCREEN 13: NOTIFICATIONS & REALTIME ALERTS
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Notification List:
+    * Type icon (e.g. Conversation Assigned)
+    * Title & Body description
+    * Time ago (e.g. "5m ago", "2 hours ago")
+    * Unread indicator dot
+    * Tap on notification -> Opens the relevant conversation in Screen 4
+  - Header Action: "Mark All as Read"
+  - Unread Badge on Mobile Bottom Navigation Tab
+
+HOW TO FETCH NOTIFICATIONS:
+  const { data: notifications } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('account_id', accountId)
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+MARK SINGLE NOTIFICATION AS READ:
+  await supabase
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('id', notificationId);
+
+MARK ALL AS READ:
+  await supabase
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('account_id', accountId)
+    .is('read_at', null);
+
+REALTIME SUBSCRIPTION FOR IN-APP NOTIFICATIONS:
+  const notifChannel = supabase
+    .channel('mobile-notifications')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'notifications',
+      filter: `account_id=eq.${accountId}`,
+    }, (payload) => {
+      // Trigger native mobile local push notification / increment unread badge!
+      showLocalNotification(payload.new.title, payload.new.body);
+      incrementBadgeCount();
+    })
+    .subscribe();
+
+
+--------------------------------------------------------------------------------
+2.14 SCREEN 14: SETTINGS & TEAM MANAGEMENT
+--------------------------------------------------------------------------------
+Features on Screen:
+  - Tab 1: Profile Settings
+    * Full Name, Email, Avatar picture upload
+    * Change Password
+    * Logout button (`supabase.auth.signOut()`)
+  - Tab 2: WhatsApp Business API Connection Status
+    * Phone Number ID, WABA ID, Display phone number
+    * Webhook health status (Connected / Error)
+    * Verify & Refresh Registration status
+  - Tab 3: Meta Templates Manager
+    * View approved, pending, and rejected templates
+    * "Sync with Meta" button (calls `/api/whatsapp/templates/sync`)
+  - Tab 4: Quick Replies Manager
+    * Add, edit, delete canned message shortcuts
+  - Tab 5: Team Members & Roles (Admin/Owner only)
+    * Member roster: Name, Email, Role (Owner, Admin, Agent, Viewer), Joined Date
+    * "+ Invite Teammate" button -> generates shareable invite link
+
+HOW TO FETCH & MANAGE TEAM MEMBERS:
+  List Members:
+    GET /api/account/members
+    Response:
+      [
+        { "user_id": "uuid", "full_name": "Jane", "email": "jane@co.com", "role": "agent", "joined_at": "..." }
+      ]
+
+  Create Invitation Link:
+    POST /api/account/invitations
+    Body:
+      { "role": "agent", "label": "Sales rep invite" }
+    Response:
+      {
+        "invitation": { ... },
+        "token": "plaintext_token",
+        "url": "https://yourdomain.com/join/plaintext_token"
+      }
+    Mobile can share this URL directly via native share sheet (WhatsApp, SMS, etc.).
+
+  Remove Member:
+    DELETE /api/account/members/<userId>
+
+
+================================================================================
+3. COMPLETE DATABASE SCHEMA & FIELD REFERENCE
+================================================================================
+
+Below is the exact schema of primary tables for mobile queries:
+
+1. `profiles`
+   - `id` (uuid, PK)
+   - `user_id` (uuid, FK auth.users)
+   - `account_id` (uuid, FK accounts)
+   - `account_role` (text: 'owner' | 'admin' | 'agent' | 'viewer')
+   - `full_name` (text)
+   - `email` (text)
+   - `avatar_url` (text)
+   - `status` (text: 'active' | 'inactive')
+
+2. `contacts`
+   - `id` (uuid, PK)
+   - `account_id` (uuid)
+   - `phone` (text, E.164)
+   - `phone_normalized` (text, digits only)
+   - `wa_user_id` (text, WhatsApp BSUID)
+   - `wa_username` (text, WhatsApp @handle)
+   - `name` (text)
+   - `email` (text)
+   - `company` (text)
+   - `avatar_url` (text)
+   - `created_at` (timestamptz)
+
+3. `conversations`
+   - `id` (uuid, PK)
+   - `account_id` (uuid)
+   - `contact_id` (uuid, FK contacts)
+   - `status` (text: 'open' | 'pending' | 'closed')
+   - `assigned_agent_id` (uuid, FK profiles.user_id)
+   - `last_message_text` (text)
+   - `last_message_at` (timestamptz)
+   - `unread_count` (int)
+   - `ai_autoreply_disabled` (bool)
+   - `ai_reply_count` (int)
+
+4. `messages`
+   - `id` (uuid, PK)
+   - `conversation_id` (uuid, FK conversations)
+   - `sender_type` (text: 'customer' | 'agent' | 'bot')
+   - `sender_id` (uuid)
+   - `content_type` (text: 'text' | 'image' | 'video' | 'audio' | 'document' | 'template' | 'interactive')
+   - `content_text` (text)
+   - `media_url` (text)
+   - `media_type` (text, mime-type)
+   - `status` (text: 'sending' | 'sent' | 'delivered' | 'read' | 'failed')
+   - `message_id` (text, Meta WAMID: wamid.HBgM...)
+   - `reply_to_message_id` (uuid, FK messages)
+   - `error_code` (int)
+   - `error_title` (text)
+   - `created_at` (timestamptz)
+
+5. `message_reactions`
+   - `id` (uuid, PK)
+   - `message_id` (uuid, FK messages)
+   - `conversation_id` (uuid)
+   - `actor_type` (text: 'customer' | 'agent')
+   - `emoji` (text)
+   - `created_at` (timestamptz)
+
+6. `tags` & `contact_tags`
+   - `tags`: `id`, `name`, `color`, `account_id`
+   - `contact_tags`: `id`, `contact_id`, `tag_id`
+
+7. `contact_notes`
+   - `id` (uuid, PK)
+   - `contact_id` (uuid, FK contacts)
+   - `user_id` (uuid, author)
+   - `note_text` (text)
+   - `created_at` (timestamptz)
+
+8. `deals`
+   - `id` (uuid, PK)
+   - `pipeline_id` (uuid)
+   - `stage_id` (uuid)
+   - `contact_id` (uuid)
+   - `title` (text)
+   - `value` (numeric)
+   - `currency` (text)
+   - `status` (text: 'open' | 'won' | 'lost')
+   - `assigned_to` (uuid)
+   - `expected_close_date` (date)
+
+9. `notifications`
+   - `id` (uuid, PK)
+   - `account_id` (uuid)
+   - `user_id` (uuid, recipient)
+   - `type` (text: 'conversation_assigned')
+   - `title` (text)
+   - `body` (text)
+   - `read_at` (timestamptz)
+   - `created_at` (timestamptz)
+
+
+================================================================================
+4. REALTIME EVENT SUBSCRIPTION MATRIX
+================================================================================
+
+To give your mobile app instant, WhatsApp-like responsiveness, establish
+these Supabase Realtime channels:
+
+Channel 1: `global:conversations`
+  Table: `conversations`
+  Events: `INSERT`, `UPDATE`
+  Mobile Action: Updates conversation list, unread badge counters, last message.
+
+Channel 2: `thread:<conversation_id>` (Subscribed only when chat thread is active)
+  Table: `messages`
+  Filter: `conversation_id=eq.<active_id>`
+  Events:
+    - `INSERT`: Appends new customer or agent message to chat bubble list.
+    - `UPDATE`: Updates ticks (sent -> delivered -> read) or marks failed.
+
+Channel 3: `reactions:<conversation_id>`
+  Table: `message_reactions`
+  Filter: `conversation_id=eq.<active_id>`
+  Events: `INSERT`, `DELETE`
+  Mobile Action: Renders or removes emoji reaction below chat bubble.
+
+Channel 4: `notifications:<account_id>`
+  Table: `notifications`
+  Filter: `account_id=eq.<account_id>`
+  Events: `INSERT`
+  Mobile Action: Triggers system push notification and header bell badge.
+
+
+================================================================================
+5. ERROR CODES & EDGE CASES REFERENCE
+================================================================================
+
+1. HTTP 400 Bad Request (`bad_request`)
+   - Reason: Phone number missing leading `+` or country code.
+   - Solution: Mobile app must validate and format numbers to E.164 (e.g. `+14155552671`).
+
+2. HTTP 401 Unauthorized (`unauthorized`)
+   - Reason: Expired Supabase session or invalid token.
+   - Solution: Call `supabase.auth.refreshSession()` or redirect to Login screen.
+
+3. HTTP 403 Forbidden (`forbidden`)
+   - Reason: User's role (e.g. 'viewer') does not have write permission (`agent`+ required).
+   - Solution: Disable send and edit buttons in UI when `account_role === 'viewer'`.
+
+4. HTTP 429 Rate Limited (`rate_limited`)
+   - Reason: Message send rate limit exceeded (120 requests/min).
+   - Solution: Inspect `Retry-After` response header and queue outgoing messages.
+
+5. Meta Cloud API Error 131047: 24-Hour Window Expired
+   - Reason: Agent tried to send free-form text outside the 24-hour service window.
+   - Solution: Catch error code 131047 and prompt the mobile user: "This conversation's 24-hour window has expired. Please send an approved Template to re-open it."
+
+6. Media Upload Size Limits
+   - Image: Max 5 MB
+   - Video / Audio / Document: Max 16 MB
+   - Solution: Mobile app should compress images and check file size before uploading to Supabase Storage.
+
+
+================================================================================
+SUMMARY: QUICK IMPLEMENTATION CHECKLIST FOR YOUR MOBILE TEAM
+================================================================================
+[ ] Initialize Supabase Client in Mobile App with URL and Anon Key.
+[ ] Implement Auth Screen with `signInWithPassword` and fetch user's profile.
+[ ] Build Conversation List with `conversations` query and Realtime channel.
+[ ] Build Active Thread Screen with auto-scroll and Realtime message listener.
+[ ] Connect Message Composer to `POST /api/whatsapp/send`.
+[ ] Implement Media Uploads to `chat-media` bucket in Supabase Storage.
+[ ] Implement Contact Drawer with Tag management (`POST/DELETE /api/contacts/:id/tags`).
+[ ] Implement Pipelines / Deals Kanban view with stage movement update query.
+[ ] Add 24-hour window detection to conditionally display Template Picker.
+[ ] Subscribe to `notifications` table for live in-app alerts.
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
