@@ -73,6 +73,12 @@ export function SettingsRail({
               const meta = SECTION_META[s];
               const Icon = meta.icon;
               const isActive = s === active;
+              let label = meta.label;
+              try {
+                label = t(`sections.${s}`) || meta.label;
+              } catch {
+                label = meta.label;
+              }
               return (
                 <button
                   key={s}
@@ -89,7 +95,7 @@ export function SettingsRail({
                   )}
                 >
                   <Icon className={cn("size-4 shrink-0", isActive ? "text-foreground" : "text-muted-foreground")} />
-                  <span className="flex-1">{t(`sections.${s}`)}</span>
+                  <span className="flex-1">{label}</span>
                   {hints?.[s] != null ? (
                     <span
                       className={cn(
