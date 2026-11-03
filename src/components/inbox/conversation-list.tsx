@@ -37,10 +37,27 @@ interface ConversationListProps {
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
-  open: "bg-primary",
-  pending: "bg-amber-500",
-  closed: "bg-muted-foreground",
+  open: "bg-emerald-500 ring-emerald-500/30",
+  pending: "bg-amber-500 ring-amber-500/30",
+  closed: "bg-slate-400 ring-slate-400/30",
 };
+
+const AVATAR_GRADIENTS = [
+  "from-emerald-500 to-teal-600",
+  "from-violet-500 to-purple-600",
+  "from-blue-500 to-cyan-600",
+  "from-amber-500 to-orange-600",
+  "from-rose-500 to-pink-600",
+  "from-indigo-500 to-blue-600",
+];
+
+function getAvatarGradient(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
+}
 
 
 
@@ -450,53 +467,73 @@ function ConversationItem({
       })
     : "";
 
+  const gradientClass = useMemo(() => getAvatarGradient(displayName), [displayName]);
+
   return (
     <button
       onClick={handleClick}
       className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50",
-        isActive && "border-l-2 border-primary bg-muted/70"
+        "group relative flex w-full items-start gap-3 px-3.5 py-3 text-left transition-all duration-150 border-b border-border/30",
+        isActive
+          ? "bg-primary/10 dark:bg-primary/15 border-l-[3.5px] border-l-primary"
+          : "hover:bg-muted/50 border-l-[3.5px] border-l-transparent"
       )}
     >
       {/* Avatar */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-        {contact?.avatar_url ? (
-          <img
-            src={contact.avatar_url}
-            alt={displayName}
-            className="h-10 w-10 rounded-full object-cover"
-          />
-        ) : (
-          initials
-        )}
+      <div className="relative shrink-0">
+        <div
+          className={cn(
+            "flex h-10.5 w-10.5 items-center justify-center rounded-full text-sm font-bold shadow-xs",
+            contact?.avatar_url
+              ? "bg-muted"
+              : `bg-gradient-to-br ${gradientClass} text-white`
+          )}
+        >
+          {contact?.avatar_url ? (
+            <img
+              src={contact.avatar_url}
+              alt={displayName}
+              className="h-10.5 w-10.5 rounded-full object-cover ring-1 ring-border/50"
+            />
+          ) : (
+            initials
+          )}
+        </div>
+        {/* Status Dot */}
+        <span
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-card shadow-xs",
+            STATUS_COLORS[conversation.status]
+          )}
+          title={conversation.status}
+        />
       </div>
 
       {/* Content */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
+      <div className="min-w-0 flex-1 pt-0.5">
+        <div className="flex items-center justify-between gap-1.5">
+          <span className={cn(
+            "truncate text-sm tracking-tight",
+            conversation.unread_count > 0 ? "font-bold text-foreground" : "font-semibold text-foreground/90 group-hover:text-foreground"
+          )}>
             {displayName}
           </span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
+          <span className="shrink-0 text-[11px] font-medium text-muted-foreground/75 tabular-nums">
+            {timeAgo}
+          </span>
         </div>
-        <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p className={cn(
+            "truncate text-xs leading-relaxed",
+            conversation.unread_count > 0 ? "font-semibold text-foreground" : "text-muted-foreground group-hover:text-muted-foreground/90"
+          )}>
             {conversation.last_message_text || t("noMessagesYet")}
           </p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.unread_count > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                {conversation.unread_count}
-              </span>
-            )}
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                STATUS_COLORS[conversation.status]
-              )}
-              title={conversation.status}
-            />
-          </div>
+          {conversation.unread_count > 0 && (
+            <span className="flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[10px] font-black text-white shadow-xs">
+              {conversation.unread_count > 99 ? "99+" : conversation.unread_count}
+            </span>
+          )}
         </div>
       </div>
     </button>

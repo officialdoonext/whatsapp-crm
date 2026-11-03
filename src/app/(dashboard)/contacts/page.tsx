@@ -529,7 +529,7 @@ export default function ContactsPage() {
       )}
 
       {/* Table */}
-      <div className="rounded-lg border border-border overflow-hidden">
+      <div className="rounded-2xl border border-border/70 overflow-hidden bg-card shadow-xs">
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
@@ -601,8 +601,15 @@ export default function ContactsPage() {
                       aria-label={t('selectContact', { name: contact.name || contact.phone })}
                     />
                   </TableCell>
-                  <TableCell className="text-foreground font-medium">
-                    {contact.name || <span className="text-muted-foreground italic">{t('unnamed')}</span>}
+                  <TableCell className="text-foreground font-semibold">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                        {(contact.name || contact.phone || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <span className="truncate">
+                        {contact.name || <span className="text-muted-foreground italic font-normal">{t('unnamed')}</span>}
+                      </span>
+                    </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground font-mono text-xs">
                     {contact.phone}

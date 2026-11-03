@@ -103,7 +103,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
 
-  // Desktop collapsed state (rail mode like Image 2 vs expanded like Image 1)
+  // Desktop collapsed state
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -136,8 +136,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   useEffect(() => {
     onClose?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, [pathname, onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -153,10 +152,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     };
   }, [open, onClose]);
 
-  const renderLink = (
-    item: NavItem,
-    isBottom = false,
-  ) => {
+  const renderLink = (item: NavItem) => {
     const isActive =
       pathname === item.href ||
       (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -174,16 +170,16 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       <Link
         href={item.href}
         className={cn(
-          "flex items-center gap-2.5 rounded-md text-[13.5px] font-medium transition-colors relative",
+          "flex items-center gap-2.5 rounded-xl text-[13.5px] font-medium transition-all duration-150 relative",
           collapsed
             ? "size-9 justify-center p-0 mx-auto"
-            : "w-full px-2.5 py-1.5",
+            : "w-full px-3 py-2",
           isActive
-            ? "bg-muted text-foreground font-semibold"
-            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+            ? "bg-primary/10 text-primary font-bold shadow-xs ring-1 ring-primary/20"
+            : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
         )}
       >
-        <Icon className={cn("size-4 shrink-0", isActive ? "text-foreground" : "text-muted-foreground")} />
+        <Icon className={cn("size-4 shrink-0 transition-colors", isActive ? "text-primary" : "text-muted-foreground")} />
 
         {!collapsed && (
           <>
@@ -200,7 +196,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               </span>
             )}
             {showNotificationBadge && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-600 px-1 text-[9px] font-bold text-white">
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-600 px-1 text-[9px] font-bold text-white shadow-xs">
                 {unreadNotifications > 9 ? "9+" : unreadNotifications}
               </span>
             )}
@@ -208,7 +204,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         )}
 
         {collapsed && (showUnreadDot || showNotificationBadge) && (
-          <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-emerald-500" />
+          <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-emerald-500 ring-2 ring-background" />
         )}
       </Link>
     );
@@ -218,7 +214,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <li key={item.href}>
           <Tooltip>
             <TooltipTrigger render={content} />
-            <TooltipContent side="right" className="text-xs">
+            <TooltipContent side="right" className="text-xs font-semibold">
               {label}
               {item.beta ? " (Beta)" : ""}
             </TooltipContent>
@@ -238,45 +234,28 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         aria-label={t("closeMenu")}
         onClick={onClose}
         className={cn(
-          "fixed inset-0 z-40 bg-background/80 backdrop-blur-sm transition-opacity lg:hidden",
-          open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+          "fixed inset-0 z-40 bg-black/60 backdrop-blur-xs transition-opacity lg:hidden",
+          open
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none",
         )}
       />
 
+      {/* Sidebar container */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-full flex-col border-r border-border bg-background transition-all duration-200 ease-in-out",
-          // Mobile drawer
-          open ? "translate-x-0 w-56" : "-translate-x-full",
-          // Desktop static rail
-          "lg:static lg:z-0 lg:translate-x-0",
-          collapsed ? "lg:w-13" : "lg:w-56",
+          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-all duration-200 lg:static lg:z-auto",
+          collapsed ? "lg:w-14" : "lg:w-56",
+          open
+            ? "w-64 translate-x-0"
+            : "-translate-x-full lg:translate-x-0",
         )}
-        aria-label={t("primaryNav")}
       >
-        {/* Mobile close button header */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3 lg:hidden">
-          <span className="text-xs font-semibold text-foreground">Menu</span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t("closeMenu")}
-            className="flex size-8 items-center justify-center rounded-md border border-border/80 bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground shadow-2xs transition-colors cursor-pointer"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
-        {/* Desktop Sidebar Toggle Header (Close / Open) */}
-        <div
-          className={cn(
-            "hidden lg:flex h-12 shrink-0 items-center border-b border-border px-2.5 transition-all",
-            collapsed ? "justify-center" : "justify-between"
-          )}
-        >
+        {/* Top Section */}
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
           {!collapsed ? (
             <>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 pl-1 select-none">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/75">
                 Navigation
               </span>
               <button
@@ -284,9 +263,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 onClick={toggleCollapsed}
                 title="Collapse sidebar"
                 aria-label="Collapse sidebar"
-                className="flex size-7.5 items-center justify-center rounded-md border border-border/80 bg-muted/50 text-foreground hover:bg-muted hover:text-foreground hover:border-border transition-all shadow-2xs cursor-pointer group"
+                className="flex size-7 items-center justify-center rounded-lg border border-border/70 bg-muted/40 text-foreground hover:bg-muted hover:text-foreground transition-all shadow-xs cursor-pointer group"
               >
-                <PanelLeftClose className="size-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                <PanelLeftClose className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
               </button>
             </>
           ) : (
@@ -297,12 +276,12 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                   onClick={toggleCollapsed}
                   title="Expand sidebar"
                   aria-label="Expand sidebar"
-                  className="flex size-8 items-center justify-center rounded-md border border-border/80 bg-muted/60 text-foreground hover:bg-accent hover:border-emerald-500/60 hover:text-emerald-500 transition-all shadow-2xs cursor-pointer group"
+                  className="flex size-8 items-center justify-center rounded-lg border border-border/70 bg-muted/50 text-foreground hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-all shadow-xs cursor-pointer group mx-auto"
                 >
-                  <PanelLeftOpen className="size-4 text-muted-foreground group-hover:text-emerald-500 transition-colors" />
+                  <PanelLeftOpen className="size-4 text-muted-foreground group-hover:text-primary transition-colors" />
                 </button>
               } />
-              <TooltipContent side="right" className="text-xs font-medium">
+              <TooltipContent side="right" className="text-xs font-semibold">
                 Expand sidebar
               </TooltipContent>
             </Tooltip>
@@ -313,20 +292,20 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
           <ul className="space-y-0.5">{navItems.map((item) => renderLink(item))}</ul>
 
-          <div className="my-2 border-t border-border/80" />
+          <div className="my-2 border-t border-border/70" />
 
           <ul className="space-y-0.5">{secondaryNavItems.map((item) => renderLink(item))}</ul>
         </nav>
 
         {/* Bottom Section: Settings & Account */}
         <div className="shrink-0 border-t border-border p-2 space-y-1">
-          <ul className="space-y-0.5">{bottomNavItems.map((item) => renderLink(item, true))}</ul>
+          <ul className="space-y-0.5">{bottomNavItems.map((item) => renderLink(item))}</ul>
 
           {/* Account name display (expanded only) */}
           {!collapsed && showAccountStrip && account?.name ? (
             <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground">
               <UsersRound className="size-4 shrink-0" />
-              <span className="truncate font-medium" title={account.name}>
+              <span className="truncate font-semibold text-foreground/80" title={account.name}>
                 {account.name}
               </span>
               {accountRole ? (
@@ -335,7 +314,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                   const ChipIcon = meta.icon;
                   return (
                     <span
-                      className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${meta.className}`}
+                      className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${meta.className}`}
                     >
                       <ChipIcon className="size-3" />
                       {t(meta.labelKey as string)}

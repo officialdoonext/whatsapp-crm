@@ -345,3 +345,23 @@ html[data-theme="rose"] {
 .scrollbar-2px::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground) !important;
 }
+
+/* Premium Visual Utilities */
+.glass-panel {
+  background: color-mix(in oklch, var(--card) 85%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.card-interactive {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+}
+
+.card-interactive:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 8px 20px -4px rgb(0 0 0 / 0.08), 0 3px 6px -2px rgb(0 0 0 / 0.04);
+}
+
+.subtle-ring {
+  box-shadow: 0 0 0 1px var(--border);
+}

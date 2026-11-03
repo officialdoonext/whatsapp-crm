@@ -924,11 +924,11 @@ export function MessageThread({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+          <div className="flex h-9.5 w-9.5 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-hover text-sm font-bold text-primary-foreground shadow-xs">
             {displayName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
+            <h2 className="truncate text-sm font-bold tracking-tight text-foreground">{displayName}</h2>
             <p className="truncate text-xs text-muted-foreground">
               {contactHandle(contact)}
             </p>
@@ -938,7 +938,7 @@ export function MessageThread({
           <Badge
             variant="outline"
             className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
+              "ml-1 hidden gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold sm:inline-flex sm:ml-2 shadow-2xs",
               sessionInfo.expired ? "text-red-400" : "text-primary"
             )}
           >
@@ -1000,7 +1000,7 @@ export function MessageThread({
           {/* Status dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                  "inline-flex items-center justify-center h-7.5 gap-1.5 px-2.5 text-xs font-semibold rounded-lg border border-border/80 bg-background/80 hover:bg-muted/70 transition-all shadow-2xs",
                   currentStatus?.color ?? "text-muted-foreground"
                 )}>
                 {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
@@ -1026,7 +1026,7 @@ export function MessageThread({
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                "inline-flex items-center justify-center h-7.5 gap-1.5 px-2.5 text-xs font-semibold rounded-lg border border-border/80 bg-background/80 hover:bg-muted/70 transition-all shadow-2xs",
                 assignedAgentId ? "text-primary" : "text-muted-foreground"
               )}
             >

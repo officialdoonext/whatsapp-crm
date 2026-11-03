@@ -64,15 +64,15 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
   return (
     <>
-      <header className="flex h-12 w-full shrink-0 items-center justify-between border-b border-border bg-background px-3 text-sm">
-        {/* Left Section: Logo + Breadcrumbs + Connect */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+      <header className="sticky top-0 z-40 flex h-12 w-full shrink-0 items-center justify-between border-b border-border/70 bg-background/80 backdrop-blur-md px-3 sm:px-4 text-sm transition-colors">
+        {/* Left Section: Logo + Breadcrumbs + Org Selector */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
           {/* Mobile menu trigger */}
           <button
             type="button"
             onClick={onOpenSidebar}
             aria-label={t("openMenu")}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden transition-colors"
           >
             <Menu className="h-4 w-4" />
           </button>
@@ -80,7 +80,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           {/* Brand Logo */}
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 group px-1 py-1 rounded-md hover:bg-muted/50 transition-colors"
+            className="group flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-muted/50 transition-all"
           >
             <Image
               src="/logo.png"
@@ -99,21 +99,21 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
           {/* Org Selector Dropdown */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium text-foreground hover:bg-muted/60 transition-colors focus:outline-none">
-              <span className="truncate max-w-[100px] sm:max-w-[130px] font-semibold">
+            <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-2 py-1 text-xs font-semibold text-foreground hover:bg-muted/70 hover:border-border transition-all focus:outline-none shadow-2xs">
+              <span className="truncate max-w-[100px] sm:max-w-[140px] font-bold">
                 {orgName}
               </span>
-              <span className="rounded border border-border bg-muted/40 px-1 py-0.2 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span className="rounded-md border border-border/80 bg-background/80 px-1.5 py-0.2 text-[9px] font-extrabold uppercase tracking-wider text-muted-foreground">
                 {roleBadge}
               </span>
               <ChevronsUpDown className="size-3 text-muted-foreground/60 shrink-0" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-48 bg-popover border-border">
+            <DropdownMenuContent align="start" className="min-w-48 bg-popover border-border shadow-md">
               <div className="px-2 py-1.5">
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
                   Organization
                 </p>
-                <p className="text-xs font-semibold text-foreground truncate mt-0.5">
+                <p className="text-xs font-bold text-foreground truncate mt-0.5">
                   {orgName}
                 </p>
               </div>
@@ -142,35 +142,49 @@ export function Header({ onOpenSidebar }: HeaderProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {/* Slash divider */}
-          <span className="hidden sm:inline text-muted-foreground/30 font-light select-none text-xs">
-            /
-          </span>
-
-          
         </div>
 
-        {/* Right Section: Feedback + Search + Icons + User */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Center: Command Search Button */}
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          className="hidden md:flex items-center gap-2 rounded-lg border border-border/70 bg-muted/40 px-3 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-all shadow-2xs"
+        >
+          <Search className="size-3.5 text-muted-foreground/75" />
+          <span className="font-normal">Search or command...</span>
+          <kbd className="pointer-events-none rounded border border-border bg-background px-1.5 py-0.2 text-[10px] font-bold text-muted-foreground/90">
+            ⌘K
+          </kbd>
+        </button>
+
+        {/* Right Section: Theme Toggle + User Avatar */}
+        <div className="flex items-center gap-2">
+          {/* Mobile search trigger */}
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground md:hidden transition-colors"
+          >
+            <Search className="size-3.5" />
+          </button>
 
           {/* Theme Mode Toggle */}
-          <ModeToggle className="size-7" />
+          <ModeToggle className="size-7 rounded-lg" />
 
           {/* User Profile Avatar */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="flex items-center rounded-full p-0.5 hover:ring-2 hover:ring-border transition-all focus:outline-none"
+              className="flex items-center rounded-full p-0.5 hover:ring-2 hover:ring-primary/30 transition-all focus:outline-none"
               aria-label={t("openAccountMenu")}
             >
-              <Avatar className="size-6 sm:size-7 border border-border">
+              <Avatar className="size-7 border border-border/80 shadow-xs">
                 {profile?.avatar_url ? (
                   <AvatarImage
                     src={profile.avatar_url}
                     alt={profile.full_name ?? t("defaultAvatar")}
                   />
                 ) : null}
-                <AvatarFallback className="bg-emerald-500/10 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
                   {initial}
                 </AvatarFallback>
               </Avatar>
@@ -178,13 +192,13 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             <DropdownMenuContent
               align="end"
               sideOffset={6}
-              className="min-w-56 bg-popover text-popover-foreground border-border"
+              className="min-w-56 bg-popover text-popover-foreground border-border shadow-md"
             >
               <div className="px-2 py-1.5">
-                <p className="truncate text-xs font-semibold text-foreground">
+                <p className="truncate text-xs font-bold text-foreground">
                   {profile?.full_name ?? t("defaultUser")}
                 </p>
-                <p className="truncate text-[11px] text-muted-foreground">
+                <p className="truncate text-[11px] font-medium text-muted-foreground">
                   {profile?.email ?? ""}
                 </p>
               </div>
@@ -193,7 +207,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
                 render={
                   <Link
                     href="/settings?tab=profile"
-                    className="text-xs text-popover-foreground hover:bg-accent"
+                    className="text-xs text-popover-foreground hover:bg-accent font-medium"
                   />
                 }
               >
@@ -204,7 +218,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
                 render={
                   <Link
                     href="/settings?tab=whatsapp"
-                    className="text-xs text-popover-foreground hover:bg-accent"
+                    className="text-xs text-popover-foreground hover:bg-accent font-medium"
                   />
                 }
               >
@@ -214,7 +228,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
               <DropdownMenuSeparator className="bg-border" />
               <DropdownMenuItem
                 onClick={signOut}
-                className="text-xs text-destructive hover:bg-destructive/10"
+                className="text-xs text-destructive hover:bg-destructive/10 font-semibold"
               >
                 <LogOut className="size-3.5" />
                 {t("menuSignOut")}

@@ -282,10 +282,10 @@ export function MessageBubble({
     >
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2 shadow-2xs",
+          "relative rounded-2xl px-3.5 py-2.5 shadow-xs transition-shadow",
           isAgent
-            ? "rounded-br-md wa-bubble-outbound border border-[#c7efc0]"
-            : "rounded-bl-md wa-bubble-inbound border border-slate-200/90 dark:border-slate-800/80 shadow-2xs",
+            ? "rounded-br-sm wa-bubble-outbound border border-[#b8e8b0]/70"
+            : "rounded-bl-sm wa-bubble-inbound border border-slate-200/90 dark:border-slate-800/80",
         )}
         style={{
           backgroundColor: isAgent ? "#d9fdd3" : "#ffffff",
