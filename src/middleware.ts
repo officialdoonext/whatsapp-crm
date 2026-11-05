@@ -3,6 +3,17 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { checkUserAccess } from '@/lib/auth/user-status'
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // Fast path: verified webhook endpoints and background crons do not use Supabase
+  // user auth session tokens. Skipping getUser() saves an unnecessary network roundtrip.
+  if (
+    pathname.startsWith('/api/whatsapp/webhook') ||
+    pathname.startsWith('/api/cron/')
+  ) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -103,7 +114,19 @@ export async function middleware(request: NextRequest) {
   // Protected pages - redirect to login if not authenticated, or to onboarding if inactive/expired
   // Every top-level route under src/app/(dashboard)/ belongs here —
   // middleware.test.ts reads that directory and fails on a missing one.
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/flows', '/agents', '/notifications', '/settings']
+  const protectedPaths = [
+    '/dashboard',
+    '/inbox',
+    '/contacts',
+    '/pipelines',
+    '/broadcasts',
+    '/automations',
+    '/flows',
+    '/agents',
+    '/notifications',
+    '/settings',
+    '/commerce',
+  ]
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
   if (!user && isProtectedPath) {

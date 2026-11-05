@@ -163,21 +163,18 @@ export async function POST(request: Request) {
     }
     const templateRow = resolvedTemplate.row
 
-    const results: BroadcastResult[] = []
-    let sentCount = 0
-    let failedCount = 0
+    const CONCURRENCY = 10
+    const results: BroadcastResult[] = new Array(recipients.length)
 
-    for (const recipient of recipients) {
+    async function processRecipient(recipient: NewRecipient): Promise<BroadcastResult> {
       const sanitized = sanitizePhoneForMeta(recipient.phone)
 
       if (!isValidE164(sanitized)) {
-        results.push({
+        return {
           phone: recipient.phone,
           status: 'failed',
           error: t('broadcast.invalidPhoneFormat'),
-        })
-        failedCount++
-        continue
+        }
       }
 
       // Retry with phone variants on "not in allowed list" so numbers
@@ -214,25 +211,36 @@ export async function POST(request: Request) {
       }
 
       if (sentMessageId) {
-        results.push({
+        return {
           phone: recipient.phone,
           status: 'sent',
           whatsapp_message_id: sentMessageId,
-        })
-        sentCount++
+        }
       } else {
         console.error(
           `Failed to send broadcast to ${recipient.phone}:`,
           lastError
         )
-        results.push({
+        return {
           phone: recipient.phone,
           status: 'failed',
           error: lastError || t('common.unknownError'),
-        })
-        failedCount++
+        }
       }
     }
+
+    // Process in controlled concurrent chunks of 10 to avoid unbounded fan-out
+    // while improving throughput by ~10x over sequential processing.
+    for (let i = 0; i < recipients.length; i += CONCURRENCY) {
+      const chunk = recipients.slice(i, i + CONCURRENCY)
+      const chunkResults = await Promise.all(chunk.map((r) => processRecipient(r)))
+      for (let j = 0; j < chunkResults.length; j++) {
+        results[i + j] = chunkResults[j]
+      }
+    }
+
+    const sentCount = results.filter((r) => r.status === 'sent').length
+    const failedCount = results.filter((r) => r.status === 'failed').length
 
     return NextResponse.json({
       success: true,

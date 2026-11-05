@@ -11,6 +11,7 @@
 
 import { isBusinessScopedUserId } from './wa-identity'
 import { getT } from '@/lib/i18n/translate'
+import { recordMetric } from '@/lib/monitoring/metrics'
 
 const ti = getT('Validation.interactive')
 
@@ -109,6 +110,83 @@ async function throwMetaError(response: Response, fallback: string): Promise<nev
   throw await readMetaError(response, fallback)
 }
 
+/**
+ * Executes a Meta Graph API HTTP request with timeout protection and
+ * controlled retries on rate limits (429) and transient server errors (502-504).
+ *
+ * For outbound sends (`isOutboundSend === true`):
+ *   - NEVER retries blind timeouts or network failures to prevent duplicate messages.
+ *   - Retries if Meta explicitly returned HTTP 429 with backoff.
+ *
+ * For idempotent queries/reads (`isOutboundSend === false`):
+ *   - Retries up to 2 times on transient 5xx or timeouts.
+ */
+export async function fetchMeta(
+  url: string,
+  options: RequestInit,
+  isOutboundSend = false
+): Promise<Response> {
+  const maxRetries = isOutboundSend ? 1 : 2
+  const timeoutMs = 15_000
+
+  let attempt = 0
+  while (true) {
+    attempt++
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    const startMs = Date.now()
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: options.signal || controller.signal,
+      })
+      clearTimeout(timeoutId)
+      const durationMs = Date.now() - startMs
+      recordMetric('meta_api_response_time_ms', durationMs, 'ms', {
+        status: response.status,
+        isOutbound: isOutboundSend,
+      })
+
+      // Handle Meta 429 (rate limit) or transient gateway 502/503/504
+      if (
+        (response.status === 429 || (response.status >= 502 && response.status <= 504)) &&
+        attempt <= maxRetries
+      ) {
+        const retryHeader = response.headers && typeof response.headers.get === 'function'
+          ? response.headers.get('retry-after')
+          : null
+        const retryAfterSec = parseInt(retryHeader || '1', 10)
+        const delayMs = Math.min(Math.max(retryAfterSec * 1000, attempt * 500), 5000)
+        console.warn(
+          `[meta-api] Meta HTTP ${response.status} on attempt ${attempt}. Retrying in ${delayMs}ms...`
+        )
+        await new Promise((r) => setTimeout(r, delayMs))
+        continue
+      }
+
+      return response
+    } catch (err: unknown) {
+      clearTimeout(timeoutId)
+      const isAbort = (err as { name?: string })?.name === 'AbortError'
+
+      if (isOutboundSend) {
+        if (isAbort) {
+          throw new Error('Meta API outbound send timed out after 15 seconds')
+        }
+        throw err
+      }
+
+      if (attempt <= maxRetries) {
+        const delayMs = attempt * 500
+        await new Promise((r) => setTimeout(r, delayMs))
+        continue
+      }
+      throw err
+    }
+  }
+}
+
 // ============================================================
 // Phone number / account
 // ============================================================
@@ -127,9 +205,9 @@ export async function verifyPhoneNumber(
 ): Promise<MetaPhoneInfo> {
   const { phoneNumberId, accessToken } = args
   const url = `${META_API_BASE}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`
-  const response = await fetch(url, {
+  const response = await fetchMeta(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
-  })
+  }, false)
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
@@ -311,9 +389,9 @@ export async function getSubscribedApps(
 ): Promise<SubscribedApp[]> {
   const { wabaId, accessToken } = args
   const url = `${META_API_BASE}/${wabaId}/subscribed_apps`
-  const response = await fetch(url, {
+  const response = await fetchMeta(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
-  })
+  }, false)
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
@@ -371,14 +449,14 @@ export async function sendTextMessage(
   if (contextMessageId) {
     body.context = { message_id: contextMessageId }
   }
-  const response = await fetch(url, {
+  const response = await fetchMeta(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(body),
-  })
+  }, true)
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
@@ -436,14 +514,14 @@ export async function sendMediaMessage(
   }
   if (contextMessageId) body.context = { message_id: contextMessageId }
 
-  const response = await fetch(url, {
+  const response = await fetchMeta(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(body),
-  })
+  }, true)
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
@@ -553,14 +631,14 @@ export async function sendTemplateMessage(
     body.context = { message_id: contextMessageId }
   }
 
-  const response = await fetch(url, {
+  const response = await fetchMeta(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(body),
-  })
+  }, true)
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
@@ -990,14 +1068,14 @@ export async function sendInteractiveButtons(
   if (contextMessageId) body.context = { message_id: contextMessageId }
 
   const url = `${META_API_BASE}/${phoneNumberId}/messages`
-  const response = await fetch(url, {
+  const response = await fetchMeta(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(body),
-  })
+  }, true)
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
@@ -1121,14 +1199,14 @@ export async function sendInteractiveList(
   if (contextMessageId) body.context = { message_id: contextMessageId }
 
   const url = `${META_API_BASE}/${phoneNumberId}/messages`
-  const response = await fetch(url, {
+  const response = await fetchMeta(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(body),
-  })
+  }, true)
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
@@ -1184,9 +1262,9 @@ export async function getMediaUrl(
   args: GetMediaUrlArgs
 ): Promise<{ url: string; mimeType: string; fileSize: number | null }> {
   const { mediaId, accessToken } = args
-  const response = await fetch(`${META_API_BASE}/${mediaId}`, {
+  const response = await fetchMeta(`${META_API_BASE}/${mediaId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
-  })
+  }, false)
   if (!response.ok) {
     await throwMetaError(response, `Media fetch failed: ${response.status}`)
   }
@@ -1215,9 +1293,9 @@ export async function downloadMedia(
   args: DownloadMediaArgs
 ): Promise<{ buffer: Buffer; contentType: string }> {
   const { downloadUrl, accessToken } = args
-  const response = await fetch(downloadUrl, {
+  const response = await fetchMeta(downloadUrl, {
     headers: { Authorization: `Bearer ${accessToken}` },
-  })
+  }, false)
   if (!response.ok) {
     throw new Error(`Media download failed: ${response.status}`)
   }

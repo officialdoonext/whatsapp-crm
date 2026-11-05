@@ -323,13 +323,14 @@ async function isDuplicateInbound(
   if (!runs?.length) return false;
   const runIds = runs.map((r) => (r as { id: string }).id);
 
-  const { count } = await db
+  const { data: events } = await db
     .from("flow_run_events")
-    .select("id", { count: "exact", head: true })
+    .select("id")
     .in("flow_run_id", runIds)
     .eq("event_type", "reply_received")
-    .filter("payload->>meta_message_id", "eq", metaMessageId);
-  return (count ?? 0) > 0;
+    .filter("payload->>meta_message_id", "eq", metaMessageId)
+    .limit(1);
+  return Boolean(events && events.length > 0);
 }
 
 async function findEntryFlow(

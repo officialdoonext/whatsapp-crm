@@ -44,6 +44,26 @@ export async function findExistingContact(
   const normalized = normalizePhone(phone);
   if (!normalized) return null;
 
+  // 1. Fast path: Indexed equality lookup on (account_id, phone_normalized)
+  // Uses idx_contacts_account_phone_normalized for sub-millisecond lookups.
+  try {
+    const exactQuery = db
+      .from("contacts")
+      .select("*")
+      .eq("account_id", accountId)
+      .eq("phone_normalized", normalized);
+
+    if (typeof (exactQuery as unknown as { maybeSingle?: unknown }).maybeSingle === "function") {
+      const { data: exactMatch, error: exactErr } = await exactQuery.maybeSingle();
+      if (!exactErr && exactMatch) {
+        return exactMatch as ExistingContact;
+      }
+    }
+  } catch {
+    // Fall back to fuzzy suffix matching below if exact lookup fails
+  }
+
+  // 2. Fallback path for fuzzy trunk variants (e.g. 0-prefix differences)
   const suffix = normalized.length >= 8 ? normalized.slice(-8) : normalized;
 
   const { data, error } = await db

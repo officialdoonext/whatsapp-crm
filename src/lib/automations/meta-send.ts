@@ -15,6 +15,7 @@ import {
   resolveTemplateRow,
   templateContentText,
 } from '@/lib/whatsapp/template-body'
+import { getCachedWhatsAppConfig } from '@/lib/whatsapp/config-cache'
 import { supabaseAdmin } from './admin-client'
 import { getT } from '@/lib/i18n/translate'
 
@@ -128,7 +129,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // new tenancy column.
   // Parallelize contact, conversation check, whatsapp config, and template
   // lookups to eliminate sequential DB round-trip delay before the Meta call.
-  const [contactRes, , configRes, templateRes] = await Promise.all([
+  const [contactRes, , configData, templateRes] = await Promise.all([
     db
       .from('contacts')
       .select('id, phone, wa_user_id')
@@ -136,11 +137,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       .eq('account_id', input.accountId)
       .maybeSingle(),
     assertConversationInAccount(db, input.conversationId, input.accountId),
-    db
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', input.accountId)
-      .single(),
+    getCachedWhatsAppConfig(db, input.accountId),
     input.kind === 'template'
       ? resolveTemplateRow(
           db,
@@ -166,18 +163,17 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   }
   const sanitized = sendTarget.target
 
-  const { data: config, error: configErr } = configRes
-  if (configErr || !config) {
+  if (!configData) {
     throw new Error(t('send.notConfigured'))
   }
 
-  const accessToken = decrypt(config.access_token)
+  const accessToken = configData.accessToken
   const templateRow = templateRes.row
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
       const r = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId: configData.phoneNumberId,
         accessToken,
         to: phone,
         templateName: input.templateName,
@@ -187,7 +183,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       return r.messageId
     }
     const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId: configData.phoneNumberId,
       accessToken,
       to: phone,
       text: input.text,

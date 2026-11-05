@@ -374,6 +374,8 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
     return
   }
 
+  const preloadedSteps = await loadAllAutomationSteps(db, automation.id)
+
   await executeStepsFrom({
     automation,
     contactId: input.contactId ?? null,
@@ -383,6 +385,8 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
     startPosition: 0,
     logId: log.id,
     triggerEvent: input.triggerType,
+    preloadedSteps,
+    verifiedConversationId: input.context?.conversation_id,
   })
 
   // Atomic counter update via the SQL function from migration 007.
@@ -406,6 +410,21 @@ interface ExecuteArgs {
   startPosition: number
   logId: string | null
   triggerEvent: string
+  preloadedSteps?: AutomationStep[]
+  verifiedConversationId?: string
+}
+
+async function loadAllAutomationSteps(
+  db: ReturnType<typeof supabaseAdmin>,
+  automationId: string
+): Promise<AutomationStep[]> {
+  const { data, error } = await db
+    .from('automation_steps')
+    .select('*')
+    .eq('automation_id', automationId)
+    .order('position', { ascending: true })
+  if (error || !data) return []
+  return data as AutomationStep[]
 }
 
 /**
@@ -418,24 +437,41 @@ type ScopeOutcome = 'completed' | 'suspended' | 'failed'
 async function executeStepsFrom(args: ExecuteArgs): Promise<ScopeOutcome> {
   const db = supabaseAdmin()
 
-  const baseQuery = db
-    .from('automation_steps')
-    .select('*')
-    .eq('automation_id', args.automation.id)
-    .gte('position', args.startPosition)
-    .order('position', { ascending: true })
+  let steps: AutomationStep[]
+  if (args.preloadedSteps) {
+    steps = args.preloadedSteps.filter((s) => {
+      const parentMatch =
+        args.parentStepId === null
+          ? s.parent_step_id === null
+          : s.parent_step_id === args.parentStepId
+      const branchMatch =
+        args.parentStepId === null
+          ? true
+          : s.branch === (args.branch ?? 'yes')
+      return parentMatch && branchMatch && s.position >= args.startPosition
+    })
+  } else {
+    const baseQuery = db
+      .from('automation_steps')
+      .select('*')
+      .eq('automation_id', args.automation.id)
+      .gte('position', args.startPosition)
+      .order('position', { ascending: true })
 
-  const scoped =
-    args.parentStepId === null
-      ? baseQuery.is('parent_step_id', null)
-      : baseQuery.eq('parent_step_id', args.parentStepId).eq('branch', args.branch ?? 'yes')
+    const scoped =
+      args.parentStepId === null
+        ? baseQuery.is('parent_step_id', null)
+        : baseQuery.eq('parent_step_id', args.parentStepId).eq('branch', args.branch ?? 'yes')
 
-  const { data: steps, error: stepsErr } = await scoped
+    const { data: dbSteps, error: stepsErr } = await scoped
 
-  if (stepsErr) {
-    await finalizeLog(args.logId, 'failed', stepsErr.message)
-    return 'failed'
+    if (stepsErr) {
+      await finalizeLog(args.logId, 'failed', stepsErr.message)
+      return 'failed'
+    }
+    steps = (dbSteps ?? []) as AutomationStep[]
   }
+
   if (!steps || steps.length === 0) {
     if (args.parentStepId === null && args.logId) {
       await finalizeLog(args.logId, 'success', null)
@@ -463,20 +499,42 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<ScopeOutcome> {
         })
         continue
       }
-      await db.from('automation_pending_executions').insert({
-        automation_id: args.automation.id,
-        // Tenancy: account_id required NOT NULL post-017.
-        account_id: args.automation.account_id,
-        user_id: args.automation.user_id,
-        contact_id: args.contactId,
-        log_id: args.logId,
-        parent_step_id: args.parentStepId,
-        branch: args.branch,
-        next_step_position: step.position + 1,
-        context: args.context,
-        run_at: new Date(Date.now() + ms).toISOString(),
-        status: 'pending',
-      })
+      const { data: pendingInsert } = await db
+        .from('automation_pending_executions')
+        .insert({
+          automation_id: args.automation.id,
+          // Tenancy: account_id required NOT NULL post-017.
+          account_id: args.automation.account_id,
+          user_id: args.automation.user_id,
+          contact_id: args.contactId,
+          log_id: args.logId,
+          parent_step_id: args.parentStepId,
+          branch: args.branch,
+          next_step_position: step.position + 1,
+          context: args.context,
+          run_at: new Date(Date.now() + ms).toISOString(),
+          status: 'pending',
+        })
+        .select('id')
+        .maybeSingle()
+
+      if (pendingInsert?.id) {
+        try {
+          const { enqueueJob } = await import('@/lib/queue/client')
+          await enqueueJob({
+            accountId: args.automation.account_id,
+            queueName: 'automations',
+            jobType: 'delayed_automation_step',
+            runAt: new Date(Date.now() + ms),
+            payload: {
+              pendingExecutionId: pendingInsert.id,
+            },
+          })
+        } catch (queueErr) {
+          console.warn('[automations] Failed to enqueue delayed step job:', queueErr)
+        }
+      }
+
       results.push({
         step_id: step.id,
         step_type: step.step_type,
@@ -504,6 +562,8 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<ScopeOutcome> {
           branch: taken ? 'yes' : 'no',
           startPosition: 0,
           logId: args.logId,
+          preloadedSteps: args.preloadedSteps,
+          verifiedConversationId: args.verifiedConversationId,
         })
         // The branch parked: stop here too. The steps after this
         // condition run when the branch resumes and climbs back out
@@ -578,29 +638,25 @@ async function suspend(
  */
 async function runResumed(args: ExecuteArgs): Promise<void> {
   const db = supabaseAdmin()
-  let outcome = await executeStepsFrom(args)
+  const allSteps = args.preloadedSteps ?? (await loadAllAutomationSteps(db, args.automation.id))
+  let outcome = await executeStepsFrom({ ...args, preloadedSteps: allSteps })
   let owner = args.parentStepId
 
   while (outcome === 'completed' && owner !== null) {
-    const { data: cond } = await db
-      .from('automation_steps')
-      .select('id, parent_step_id, branch, position')
-      .eq('id', owner)
-      .eq('automation_id', args.automation.id)
-      .maybeSingle()
+    const cond = allSteps.find((s) => s.id === owner)
     if (!cond) {
       // The condition was deleted while the run was parked — nothing
       // left to climb into. What did run, ran successfully.
       await setLogStatus(args.logId, 'success')
       return
     }
-    const c = cond as Pick<AutomationStep, 'parent_step_id' | 'branch' | 'position'>
-    owner = c.parent_step_id ?? null
+    owner = cond.parent_step_id ?? null
     outcome = await executeStepsFrom({
       ...args,
       parentStepId: owner,
-      branch: c.branch ?? null,
-      startPosition: c.position + 1,
+      branch: cond.branch ?? null,
+      startPosition: cond.position + 1,
+      preloadedSteps: allSteps,
     })
   }
 
@@ -927,6 +983,9 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
  * no meaningful target without a conversation.
  */
 async function resolveConversationId(args: ExecuteArgs): Promise<string> {
+  if (args.verifiedConversationId) {
+    return args.verifiedConversationId
+  }
   const fromCtx = args.context.conversation_id
   if (fromCtx) {
     // Re-verify rather than trust the context. Dispatch already checks

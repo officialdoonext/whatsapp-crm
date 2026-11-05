@@ -22,6 +22,7 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import { recordMetric } from '@/lib/monitoring/metrics'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -274,7 +275,7 @@ export async function POST(request: Request) {
   return NextResponse.json({ status: 'received' }, { status: 200 })
 }
 
-async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
+export async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
   if (!body.entry) return
 
   for (const entry of body.entry) {
@@ -426,6 +427,10 @@ async function handleStatusUpdate(status: {
   recipient_id: string
   errors?: MetaStatusError[]
 }) {
+  recordMetric(`message_status_${status.status}`, 1, 'count', {
+    message_id: status.id,
+    status: status.status,
+  })
   // Meta's reason for a failed send (#535). Only read on `failed`; a
   // later non-failed status for the same wamid leaves the error
   // columns alone rather than clearing them, so the reason survives.

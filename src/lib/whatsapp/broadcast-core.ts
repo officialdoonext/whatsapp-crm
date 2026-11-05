@@ -28,6 +28,7 @@ import {
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
+import { recordMetric } from '@/lib/monitoring/metrics';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -145,8 +146,13 @@ export async function createBroadcast(
   // `to` is raw integrator input, so the leading `+` is required — a
   // national-format number would otherwise be delivered to whichever
   // country its leading digits spell (issue #586).
+  //
+  // Process contact resolution in controlled concurrent batches of 15
+  // to avoid serial round-trip latency when resolving large recipient lists.
   const resolved: { contactId: string; phone: string; params: string[] }[] = [];
   let rejected = 0;
+
+  const validRecipients: { to: string; sanitized: string; params: string[] }[] = [];
   for (const r of recipients) {
     const to = typeof r.to === 'string' ? r.to : '';
     const sanitized = parseInternationalPhone(to);
@@ -154,16 +160,31 @@ export async function createBroadcast(
       rejected++;
       continue;
     }
-    const { id } = await findOrCreateContact(db, accountId, auditUserId, {
-      phone: to,
-    });
-    resolved.push({
-      contactId: id,
-      phone: sanitized,
+    validRecipients.push({
+      to,
+      sanitized,
       params: Array.isArray(r.params)
         ? r.params.filter((p): p is string => typeof p === 'string')
         : [],
     });
+  }
+
+  const RESOLVE_CHUNK_SIZE = 15;
+  for (let i = 0; i < validRecipients.length; i += RESOLVE_CHUNK_SIZE) {
+    const chunk = validRecipients.slice(i, i + RESOLVE_CHUNK_SIZE);
+    const chunkResults = await Promise.all(
+      chunk.map(async (item) => {
+        const { id } = await findOrCreateContact(db, accountId, auditUserId, {
+          phone: item.to,
+        });
+        return {
+          contactId: id,
+          phone: item.sanitized,
+          params: item.params,
+        };
+      })
+    );
+    resolved.push(...chunkResults);
   }
 
   // Collapse recipients that resolved to the SAME contact (the caller
@@ -258,11 +279,28 @@ export async function createBroadcast(
  * here — only the terminal `status` — otherwise a manual value would
  * race and clobber the trigger-maintained counts.
  */
+export const BROADCAST_CONCURRENCY = 10;
+
+/**
+ * Fan out a {@link BroadcastPlan}: send each recipient's template
+ * (phone-variant retry) and stamp its `broadcast_recipients` row.
+ * Best-effort per recipient — one failure never aborts the rest.
+ * Designed to run inside `after()` or background workers.
+ *
+ * Uses controlled concurrency (10 workers by default) to maximize Meta API
+ * throughput without overwhelming network or database connections.
+ * Checks for campaign pause/cancellation before each concurrent batch.
+ */
 export async function deliverBroadcast(
   db: SupabaseClient,
-  plan: BroadcastPlan
+  plan: BroadcastPlan,
+  options?: { concurrency?: number }
 ): Promise<void> {
-  for (const recipient of plan.planned) {
+  const concurrency = Math.max(1, options?.concurrency ?? BROADCAST_CONCURRENCY);
+  const planned = plan.planned;
+  const startMs = Date.now();
+
+  const deliverSingleRecipient = async (recipient: PlannedRecipient) => {
     const variants = phoneVariants(recipient.phone);
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
@@ -308,9 +346,33 @@ export async function deliverBroadcast(
         })
         .eq('id', recipient.recipientRowId);
     }
+  };
+
+  for (let i = 0; i < planned.length; i += concurrency) {
+    // Check if the campaign has been paused or cancelled by an agent
+    const { data: bcast } = await db
+      .from('broadcasts')
+      .select('status')
+      .eq('id', plan.broadcastId)
+      .maybeSingle();
+
+    if (bcast?.status === 'paused' || bcast?.status === 'cancelled') {
+      console.log(
+        `[broadcast-core] Broadcast ${plan.broadcastId} is ${bcast.status}. Halting delivery pass.`
+      );
+      return;
+    }
+
+    const batch = planned.slice(i, i + concurrency);
+    await Promise.all(batch.map((r) => deliverSingleRecipient(r)));
   }
 
   await finalizeBroadcastStatus(db, plan.broadcastId);
+  const totalDuration = Date.now() - startMs;
+  recordMetric('broadcast_completion_duration_ms', totalDuration, 'ms', {
+    broadcast_id: plan.broadcastId,
+    recipients_count: planned.length,
+  });
 }
 
 /**
