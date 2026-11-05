@@ -120,7 +120,14 @@ export function usePresence(enabled = true): UsePresenceResult {
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
-          console.error("[usePresence] initial fetch error:", error.message);
+          const isNetworkError =
+            error.message?.includes("Failed to fetch") ||
+            error.message?.includes("NetworkError") ||
+            error.message?.includes("AbortError") ||
+            (typeof navigator !== "undefined" && !navigator.onLine);
+          if (!isNetworkError) {
+            console.warn("[usePresence] initial fetch warning:", error.message);
+          }
           return;
         }
         setRows((prev) => {

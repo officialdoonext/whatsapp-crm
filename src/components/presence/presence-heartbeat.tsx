@@ -50,19 +50,43 @@ export function PresenceHeartbeat() {
 
     const beat = async () => {
       if (cancelled) return;
+
+      // Skip beat if browser is known to be offline
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return;
+      }
+
       // Coalesce bursts: a tab refocus fires visibilitychange AND focus
       // together, so skip a beat within 1s of the last to avoid two RPCs
       // in the same frame. The 30s interval is never affected.
       const t = Date.now();
       if (t - lastBeatAt < 1_000) return;
       lastBeatAt = t;
-      const { error } = await supabase.rpc("touch_presence", {
-        p_status: currentStatus(),
-      });
-      if (error && !cancelled) {
-        // Non-fatal: presence is best-effort. Log once per failure so a
-        // misconfigured RPC is visible without spamming.
-        console.error("[PresenceHeartbeat] touch_presence failed:", error.message);
+
+      try {
+        const { error } = await supabase.rpc("touch_presence", {
+          p_status: currentStatus(),
+        });
+
+        if (error && !cancelled) {
+          // Detect transient network glitches, tab close / aborts, or offline states
+          const isNetworkError =
+            error.message?.includes("Failed to fetch") ||
+            error.message?.includes("NetworkError") ||
+            error.message?.includes("AbortError") ||
+            error.message?.includes("network") ||
+            (typeof navigator !== "undefined" && !navigator.onLine);
+
+          if (isNetworkError) {
+            // Best-effort: ignore transient network drops without throwing dev error overlays
+            return;
+          }
+
+          // For misconfigured RPC or auth errors, warn without throwing fatal error overlay
+          console.warn("[PresenceHeartbeat] touch_presence:", error.message);
+        }
+      } catch {
+        // Ignored: network disconnect or fetch aborted while navigating
       }
     };
 
@@ -77,15 +101,14 @@ export function PresenceHeartbeat() {
       document.addEventListener(e, markActive, { passive: true }),
     );
 
-    // Returning to the tab should beat immediately so a member flips
-    // back to online without a 30s wait. The debounce in beat() absorbs
-    // the visibilitychange + focus double-fire.
+    // Returning to the tab or reconnecting to network should beat immediately
     const onReturn = () => {
       if (!document.hidden) markActive();
       void beat();
     };
     document.addEventListener("visibilitychange", onReturn);
     window.addEventListener("focus", onReturn);
+    window.addEventListener("online", onReturn);
 
     void beat();
     const interval = setInterval(() => void beat(), HEARTBEAT_MS);
@@ -98,6 +121,7 @@ export function PresenceHeartbeat() {
       );
       document.removeEventListener("visibilitychange", onReturn);
       window.removeEventListener("focus", onReturn);
+      window.removeEventListener("online", onReturn);
     };
   }, [accountId]);
 
