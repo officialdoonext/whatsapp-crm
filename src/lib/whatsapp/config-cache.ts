@@ -13,6 +13,7 @@ export interface DecryptedWhatsAppConfig {
   mirrorInboundMedia: boolean;
 }
 
+
 interface CacheEntry {
   config: DecryptedWhatsAppConfig;
   expiresAt: number;
