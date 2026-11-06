@@ -30,7 +30,7 @@
   "packageManager": "npm@10.9.9",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && npm run build:worker",
+    "build": "next build",
     "build:worker": "esbuild src/workers/index.ts --bundle --platform=node --format=esm --packages=external --alias:next/server=next/server.js --outfile=dist/worker.mjs",
     "start": "next start",
     "lint": "eslint",
