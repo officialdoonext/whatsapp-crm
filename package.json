@@ -31,7 +31,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:worker": "esbuild src/workers/index.ts --bundle --platform=node --format=esm --packages=external --alias:next/server=next/server.js --outfile=dist/worker.mjs",
+    "build:worker": "esbuild src/workers/index.ts --bundle --platform=node --format=esm --alias:next/server=next/server.js --outfile=dist/worker.mjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
