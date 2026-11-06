@@ -6,6 +6,32 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 // conversation state and sends through the service role.
 let _adminClient: SupabaseClient | null = null
 
+class StubWebSocket {
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSING = 2
+  static readonly CLOSED = 3
+  readonly CONNECTING = 0
+  readonly OPEN = 1
+  readonly CLOSING = 2
+  readonly CLOSED = 3
+  readonly readyState = 3
+  readonly url = ''
+  readonly protocol = ''
+  onopen = null
+  onmessage = null
+  onclose = null
+  onerror = null
+  close() {}
+  send() {}
+  addEventListener() {}
+  removeEventListener() {}
+}
+
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = StubWebSocket as unknown as typeof WebSocket
+}
+
 export function supabaseAdmin(): SupabaseClient {
   if (!_adminClient) {
     const supabaseUrl =
@@ -24,7 +50,19 @@ export function supabaseAdmin(): SupabaseClient {
       )
     }
 
-    _adminClient = createClient(supabaseUrl, serviceRoleKey)
+    const transport = typeof globalThis.WebSocket !== 'undefined'
+      ? globalThis.WebSocket
+      : StubWebSocket
+
+    _adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+      realtime: {
+        transport: transport as never,
+      },
+    })
   }
   return _adminClient
 }

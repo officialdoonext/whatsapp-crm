@@ -6,6 +6,36 @@
 //   node --env-file=.env.local dist/worker.mjs
 // ============================================================
 
+// Polyfill global WebSocket for Node < 22 environments.
+// SupabaseClient eagerly instantiates RealtimeClient in its constructor, which
+// throws "Node.js 20 detected without native WebSocket support" even though
+// the worker only uses PostgreSQL REST/RPC operations.
+if (typeof globalThis.WebSocket === 'undefined') {
+  class StubWebSocket {
+    static readonly CONNECTING = 0;
+    static readonly OPEN = 1;
+    static readonly CLOSING = 2;
+    static readonly CLOSED = 3;
+    readonly CONNECTING = 0;
+    readonly OPEN = 1;
+    readonly CLOSING = 2;
+    readonly CLOSED = 3;
+    readonly readyState = 3;
+    readonly url = '';
+    readonly protocol = '';
+    onopen = null;
+    onmessage = null;
+    onclose = null;
+    onerror = null;
+    constructor() {}
+    close() {}
+    send() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  globalThis.WebSocket = StubWebSocket as unknown as typeof WebSocket;
+}
+
 // Attempt loading local env files if present (Node.js 20.6+)
 const loadEnv = (process as unknown as { loadEnvFile?: (path?: string) => void }).loadEnvFile;
 if (typeof loadEnv === 'function') {

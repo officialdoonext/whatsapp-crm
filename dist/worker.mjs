@@ -21325,16 +21325,63 @@ function supabaseAdmin() {
         "Supabase service role key is required. Set SUPABASE_SERVICE_ROLE_KEY in your environment variables."
       );
     }
-    _adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const transport = typeof globalThis.WebSocket !== "undefined" ? globalThis.WebSocket : StubWebSocket;
+    _adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      },
+      realtime: {
+        transport
+      }
+    });
   }
   return _adminClient;
 }
-var _adminClient;
+var _adminClient, StubWebSocket;
 var init_admin_client = __esm({
   "src/lib/automations/admin-client.ts"() {
     "use strict";
     init_dist4();
     _adminClient = null;
+    StubWebSocket = class {
+      constructor() {
+        this.CONNECTING = 0;
+        this.OPEN = 1;
+        this.CLOSING = 2;
+        this.CLOSED = 3;
+        this.readyState = 3;
+        this.url = "";
+        this.protocol = "";
+        this.onopen = null;
+        this.onmessage = null;
+        this.onclose = null;
+        this.onerror = null;
+      }
+      static {
+        this.CONNECTING = 0;
+      }
+      static {
+        this.OPEN = 1;
+      }
+      static {
+        this.CLOSING = 2;
+      }
+      static {
+        this.CLOSED = 3;
+      }
+      close() {
+      }
+      send() {
+      }
+      addEventListener() {
+      }
+      removeEventListener() {
+      }
+    };
+    if (typeof globalThis.WebSocket === "undefined") {
+      globalThis.WebSocket = StubWebSocket;
+    }
   }
 });
 
@@ -30049,16 +30096,63 @@ function supabaseAdmin2() {
         "Supabase service role key is required. Set SUPABASE_SERVICE_ROLE_KEY in your environment variables."
       );
     }
-    _adminClient2 = createClient(supabaseUrl, serviceRoleKey);
+    const transport = typeof globalThis.WebSocket !== "undefined" ? globalThis.WebSocket : StubWebSocket2;
+    _adminClient2 = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      },
+      realtime: {
+        transport
+      }
+    });
   }
   return _adminClient2;
 }
-var _adminClient2;
+var _adminClient2, StubWebSocket2;
 var init_admin_client2 = __esm({
   "src/lib/flows/admin-client.ts"() {
     "use strict";
     init_dist4();
     _adminClient2 = null;
+    StubWebSocket2 = class {
+      constructor() {
+        this.CONNECTING = 0;
+        this.OPEN = 1;
+        this.CLOSING = 2;
+        this.CLOSED = 3;
+        this.readyState = 3;
+        this.url = "";
+        this.protocol = "";
+        this.onopen = null;
+        this.onmessage = null;
+        this.onclose = null;
+        this.onerror = null;
+      }
+      static {
+        this.CONNECTING = 0;
+      }
+      static {
+        this.OPEN = 1;
+      }
+      static {
+        this.CLOSING = 2;
+      }
+      static {
+        this.CLOSED = 3;
+      }
+      close() {
+      }
+      send() {
+      }
+      addEventListener() {
+      }
+      removeEventListener() {
+      }
+    };
+    if (typeof globalThis.WebSocket === "undefined") {
+      globalThis.WebSocket = StubWebSocket2;
+    }
   }
 });
 
@@ -31968,16 +32062,63 @@ function supabaseAdmin3() {
         "Supabase service role key is required. Set SUPABASE_SERVICE_ROLE_KEY in your environment variables."
       );
     }
-    _adminClient3 = createClient(supabaseUrl, serviceRoleKey);
+    const transport = typeof globalThis.WebSocket !== "undefined" ? globalThis.WebSocket : StubWebSocket3;
+    _adminClient3 = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      },
+      realtime: {
+        transport
+      }
+    });
   }
   return _adminClient3;
 }
-var _adminClient3;
+var _adminClient3, StubWebSocket3;
 var init_admin_client3 = __esm({
   "src/lib/ai/admin-client.ts"() {
     "use strict";
     init_dist4();
     _adminClient3 = null;
+    StubWebSocket3 = class {
+      constructor() {
+        this.CONNECTING = 0;
+        this.OPEN = 1;
+        this.CLOSING = 2;
+        this.CLOSED = 3;
+        this.readyState = 3;
+        this.url = "";
+        this.protocol = "";
+        this.onopen = null;
+        this.onmessage = null;
+        this.onclose = null;
+        this.onerror = null;
+      }
+      static {
+        this.CONNECTING = 0;
+      }
+      static {
+        this.OPEN = 1;
+      }
+      static {
+        this.CLOSING = 2;
+      }
+      static {
+        this.CLOSED = 3;
+      }
+      close() {
+      }
+      send() {
+      }
+      addEventListener() {
+      }
+      removeEventListener() {
+      }
+    };
+    if (typeof globalThis.WebSocket === "undefined") {
+      globalThis.WebSocket = StubWebSocket3;
+    }
   }
 });
 
@@ -38419,6 +38560,44 @@ var QueueWorker = class {
 };
 
 // src/workers/index.ts
+if (typeof globalThis.WebSocket === "undefined") {
+  class StubWebSocket4 {
+    constructor() {
+      this.CONNECTING = 0;
+      this.OPEN = 1;
+      this.CLOSING = 2;
+      this.CLOSED = 3;
+      this.readyState = 3;
+      this.url = "";
+      this.protocol = "";
+      this.onopen = null;
+      this.onmessage = null;
+      this.onclose = null;
+      this.onerror = null;
+    }
+    static {
+      this.CONNECTING = 0;
+    }
+    static {
+      this.OPEN = 1;
+    }
+    static {
+      this.CLOSING = 2;
+    }
+    static {
+      this.CLOSED = 3;
+    }
+    close() {
+    }
+    send() {
+    }
+    addEventListener() {
+    }
+    removeEventListener() {
+    }
+  }
+  globalThis.WebSocket = StubWebSocket4;
+}
 var loadEnv = process.loadEnvFile;
 if (typeof loadEnv === "function") {
   for (const envFile of [".env.local", ".env"]) {
