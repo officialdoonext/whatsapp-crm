@@ -1,4 +1,4 @@
-import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
+import { sendTextMessage, sendTemplateMessage, sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import {
   engineSendInteractiveButtons,
@@ -44,6 +44,7 @@ interface SendTextArgs {
   conversationId: string
   contactId: string
   text: string
+  inboundMessageId?: string
 }
 
 interface SendTemplateArgs {
@@ -54,6 +55,7 @@ interface SendTemplateArgs {
   templateName: string
   language?: string
   params?: string[]
+  inboundMessageId?: string
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -72,6 +74,7 @@ interface SendInteractiveArgs {
   conversationId: string
   contactId: string
   payload: InteractiveMessagePayload
+  inboundMessageId?: string
 }
 
 /**
@@ -88,7 +91,43 @@ interface SendInteractiveArgs {
 export async function engineSendInteractive(
   args: SendInteractiveArgs,
 ): Promise<{ whatsapp_message_id: string }> {
-  const { payload, accountId, userId, conversationId, contactId } = args
+  const { payload, accountId, userId, conversationId, contactId, inboundMessageId } = args
+  const db = supabaseAdmin()
+  const configData = await getCachedWhatsAppConfig(db, accountId)
+  if (configData) {
+    let resolvedInboundId = inboundMessageId
+    if (!resolvedInboundId && conversationId) {
+      try {
+        const { data: lastInbound } = await db
+          .from('messages')
+          .select('message_id')
+          .eq('conversation_id', conversationId)
+          .eq('sender_type', 'customer')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (lastInbound?.message_id && lastInbound.message_id.startsWith('wamid.')) {
+          resolvedInboundId = lastInbound.message_id
+        }
+      } catch {
+        // Ignore lookup failure
+      }
+    }
+
+    if (resolvedInboundId) {
+      try {
+        await sendTypingIndicator({
+          phoneNumberId: configData.phoneNumberId,
+          accessToken: configData.accessToken,
+          messageId: resolvedInboundId,
+        })
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      } catch (err) {
+        console.warn('[automations] typing indicator failed (continuing):', err)
+      }
+    }
+  }
+
   const common = { accountId, userId, conversationId, contactId }
   if (payload.kind === 'buttons') {
     return engineSendInteractiveButtons({
@@ -191,6 +230,40 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     return r.messageId
   }
 
+  // Best-effort typing indicator to show "typing…" on WhatsApp before delivering the reply
+  let inboundMessageId = input.inboundMessageId
+  if (!inboundMessageId && input.conversationId) {
+    try {
+      const { data: lastInbound } = await db
+        .from('messages')
+        .select('message_id')
+        .eq('conversation_id', input.conversationId)
+        .eq('sender_type', 'customer')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (lastInbound?.message_id && lastInbound.message_id.startsWith('wamid.')) {
+        inboundMessageId = lastInbound.message_id
+      }
+    } catch {
+      // Ignore lookup failure
+    }
+  }
+
+  if (inboundMessageId) {
+    try {
+      await sendTypingIndicator({
+        phoneNumberId: configData.phoneNumberId,
+        accessToken,
+        messageId: inboundMessageId,
+      })
+      // Small natural pause so the customer sees "typing..." before the message arrives
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    } catch (err) {
+      console.warn('[automations] typing indicator failed (continuing):', err)
+    }
+  }
+
   // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
   // numbers registered with/without a trunk 0 both require this to
   // reliably land a message.
@@ -203,9 +276,11 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       waMessageId = await attempt(v)
       workingPhone = v
       lastError = null
+      console.log(`[automations] Delivered ${input.kind} via Meta: ${waMessageId} (to: ${v})`)
       break
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[automations] Meta send attempt failed for variant ${v}:`, msg)
       if (!isRecipientNotAllowedError(msg)) throw err
       lastError = err
     }

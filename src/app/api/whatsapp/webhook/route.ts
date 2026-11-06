@@ -1013,6 +1013,7 @@ async function processMessage(
           // Only set on interactive taps; drives the interactive_reply
           // trigger's exact-id match.
           interactive_reply_id: interactiveReplyId ?? undefined,
+          inbound_message_id: message.id,
         },
       }).catch((err) => console.error('[automations] dispatch failed:', err)),
     ),

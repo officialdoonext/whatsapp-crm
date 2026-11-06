@@ -30008,11 +30008,18 @@ __export2(encryption_exports, {
   isLegacyFormat: () => isLegacyFormat
 });
 import crypto2 from "crypto";
+function getKey() {
+  const key = process.env.ENCRYPTION_KEY;
+  if (!key) {
+    throw new Error("ENCRYPTION_KEY environment variable is missing.");
+  }
+  return Buffer.from(key, "hex");
+}
 function encrypt(text) {
   const iv = crypto2.randomBytes(GCM_IV_LENGTH);
   const cipher = crypto2.createCipheriv(
     "aes-256-gcm",
-    Buffer.from(ENCRYPTION_KEY, "hex"),
+    getKey(),
     iv
   );
   let encrypted = cipher.update(text, "utf8", "hex");
@@ -30038,7 +30045,7 @@ function decrypt(encryptedText) {
     }
     const decipher = crypto2.createDecipheriv(
       "aes-256-gcm",
-      Buffer.from(ENCRYPTION_KEY, "hex"),
+      getKey(),
       iv
     );
     decipher.setAuthTag(authTag);
@@ -30056,7 +30063,7 @@ function decrypt(encryptedText) {
     }
     const decipher = crypto2.createDecipheriv(
       "aes-256-cbc",
-      Buffer.from(ENCRYPTION_KEY, "hex"),
+      getKey(),
       iv
     );
     let decrypted = decipher.update(ctHex, "hex", "utf8");
@@ -30070,11 +30077,10 @@ function decrypt(encryptedText) {
 function isLegacyFormat(encryptedText) {
   return encryptedText.split(":").length === 2;
 }
-var ENCRYPTION_KEY, GCM_IV_LENGTH, CBC_IV_LENGTH, AUTH_TAG_LENGTH;
+var GCM_IV_LENGTH, CBC_IV_LENGTH, AUTH_TAG_LENGTH;
 var init_encryption = __esm({
   "src/lib/whatsapp/encryption.ts"() {
     "use strict";
-    ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
     GCM_IV_LENGTH = 12;
     CBC_IV_LENGTH = 16;
     AUTH_TAG_LENGTH = 16;
@@ -30954,7 +30960,33 @@ async function engineSendTemplate(args) {
   return sendViaMeta({ ...args, kind: "template" });
 }
 async function engineSendInteractive(args) {
-  const { payload, accountId, userId, conversationId, contactId } = args;
+  const { payload, accountId, userId, conversationId, contactId, inboundMessageId } = args;
+  const db = supabaseAdmin();
+  const configData = await getCachedWhatsAppConfig(db, accountId);
+  if (configData) {
+    let resolvedInboundId = inboundMessageId;
+    if (!resolvedInboundId && conversationId) {
+      try {
+        const { data: lastInbound } = await db.from("messages").select("message_id").eq("conversation_id", conversationId).eq("sender_type", "customer").order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (lastInbound?.message_id && lastInbound.message_id.startsWith("wamid.")) {
+          resolvedInboundId = lastInbound.message_id;
+        }
+      } catch {
+      }
+    }
+    if (resolvedInboundId) {
+      try {
+        await sendTypingIndicator({
+          phoneNumberId: configData.phoneNumberId,
+          accessToken: configData.accessToken,
+          messageId: resolvedInboundId
+        });
+        await new Promise((resolve) => setTimeout(resolve, 1e3));
+      } catch (err) {
+        console.warn("[automations] typing indicator failed (continuing):", err);
+      }
+    }
+  }
   const common = { accountId, userId, conversationId, contactId };
   if (payload.kind === "buttons") {
     return engineSendInteractiveButtons({
@@ -31026,6 +31058,28 @@ async function sendViaMeta(input) {
     });
     return r2.messageId;
   };
+  let inboundMessageId = input.inboundMessageId;
+  if (!inboundMessageId && input.conversationId) {
+    try {
+      const { data: lastInbound } = await db.from("messages").select("message_id").eq("conversation_id", input.conversationId).eq("sender_type", "customer").order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (lastInbound?.message_id && lastInbound.message_id.startsWith("wamid.")) {
+        inboundMessageId = lastInbound.message_id;
+      }
+    } catch {
+    }
+  }
+  if (inboundMessageId) {
+    try {
+      await sendTypingIndicator({
+        phoneNumberId: configData.phoneNumberId,
+        accessToken,
+        messageId: inboundMessageId
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1e3));
+    } catch (err) {
+      console.warn("[automations] typing indicator failed (continuing):", err);
+    }
+  }
   const variants = sendTarget.isPhone ? phoneVariants(sanitized) : [sanitized];
   let workingPhone = sanitized;
   let waMessageId = "";
@@ -31035,9 +31089,11 @@ async function sendViaMeta(input) {
       waMessageId = await attempt(v);
       workingPhone = v;
       lastError = null;
+      console.log(`[automations] Delivered ${input.kind} via Meta: ${waMessageId} (to: ${v})`);
       break;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[automations] Meta send attempt failed for variant ${v}:`, msg);
       if (!isRecipientNotAllowedError(msg)) throw err;
       lastError = err;
     }
@@ -31339,6 +31395,7 @@ async function runAutomationsForTrigger(input) {
     for (const automation of automations) {
       if (!triggerMatches(automation, input.context)) continue;
       try {
+        console.log(`[automations] Executing automation "${automation.name}" (${automation.id}) for trigger "${input.triggerType}"`);
         await executeAutomation(automation, input);
       } catch (err) {
         console.error("[automations] execute failed:", automation.id, err);
@@ -31610,6 +31667,7 @@ async function executeStepsFrom(args) {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[automations] Step "${step.step_type}" (${step.id}) failed in automation "${args.automation.name}":`, msg);
       results.push({
         step_id: step.id,
         step_type: step.step_type,
@@ -31698,7 +31756,8 @@ async function runStep(step, args) {
         userId: args.automation.user_id,
         conversationId,
         contactId: args.contactId,
-        text
+        text,
+        inboundMessageId: args.context.inbound_message_id
       });
       return `sent via Meta (${whatsapp_message_id})`;
     }
@@ -31714,7 +31773,8 @@ async function runStep(step, args) {
         userId: args.automation.user_id,
         conversationId,
         contactId: args.contactId,
-        payload
+        payload,
+        inboundMessageId: args.context.inbound_message_id
       });
       return `interactive sent via Meta (${whatsapp_message_id})`;
     }
@@ -31740,7 +31800,8 @@ async function runStep(step, args) {
         contactId: args.contactId,
         templateName: cfg.template_name,
         language: cfg.language,
-        params
+        params,
+        inboundMessageId: args.context.inbound_message_id
       });
       return `template sent via Meta (${whatsapp_message_id})`;
     }

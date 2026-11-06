@@ -46,6 +46,8 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  /** Inbound Meta message id (wamid) that triggered this event. Used to show typing indicator. */
+  inbound_message_id?: string
 }
 
 export interface DispatchInput {
@@ -136,6 +138,7 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     for (const automation of automations as Automation[]) {
       if (!triggerMatches(automation, input.context)) continue
       try {
+        console.log(`[automations] Executing automation "${automation.name}" (${automation.id}) for trigger "${input.triggerType}"`)
         await executeAutomation(automation, input)
       } catch (err) {
         console.error('[automations] execute failed:', automation.id, err)
@@ -593,6 +596,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<ScopeOutcome> {
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[automations] Step "${step.step_type}" (${step.id}) failed in automation "${args.automation.name}":`, msg)
       results.push({
         step_id: step.id,
         step_type: step.step_type,
@@ -718,6 +722,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         conversationId,
         contactId: args.contactId,
         text,
+        inboundMessageId: args.context.inbound_message_id,
       })
       return `sent via Meta (${whatsapp_message_id})`
     }
@@ -738,6 +743,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         conversationId,
         contactId: args.contactId,
         payload,
+        inboundMessageId: args.context.inbound_message_id,
       })
       return `interactive sent via Meta (${whatsapp_message_id})`
     }
@@ -773,6 +779,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         templateName: cfg.template_name,
         language: cfg.language,
         params,
+        inboundMessageId: args.context.inbound_message_id,
       })
       return `template sent via Meta (${whatsapp_message_id})`
     }
