@@ -106,7 +106,7 @@ export async function engineSendInteractive(
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
-        if (lastInbound?.message_id && lastInbound.message_id.startsWith('wamid.')) {
+        if (lastInbound?.message_id) {
           resolvedInboundId = lastInbound.message_id
         }
       } catch {
@@ -121,7 +121,7 @@ export async function engineSendInteractive(
           accessToken: configData.accessToken,
           messageId: resolvedInboundId,
         })
-        await new Promise((resolve) => setTimeout(resolve, 1000))
+        await new Promise((resolve) => setTimeout(resolve, 1500))
       } catch (err) {
         console.warn('[automations] typing indicator failed (continuing):', err)
       }
@@ -242,7 +242,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      if (lastInbound?.message_id && lastInbound.message_id.startsWith('wamid.')) {
+      if (lastInbound?.message_id) {
         inboundMessageId = lastInbound.message_id
       }
     } catch {
@@ -257,8 +257,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         accessToken,
         messageId: inboundMessageId,
       })
-      // Small natural pause so the customer sees "typing..." before the message arrives
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Natural pause so the customer sees "typing..." before the message arrives
+      await new Promise((resolve) => setTimeout(resolve, 1500))
     } catch (err) {
       console.warn('[automations] typing indicator failed (continuing):', err)
     }

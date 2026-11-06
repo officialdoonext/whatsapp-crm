@@ -112,11 +112,24 @@ worker.registerHandler<BroadcastRecipientJobPayload>('broadcast_recipient', asyn
   const payload = job.payload;
 
   // Load WhatsApp config for tenant
-  const { data: config, error: configErr } = await db
+  let { data: config, error: configErr } = await db
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', payload.accountId)
-    .single();
+    .maybeSingle();
+
+  if (!config) {
+    const { data: fallback } = await db
+      .from('whatsapp_config')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fallback) {
+      console.warn('[queue-worker] Falling back to primary whatsapp_config row for account:', payload.accountId);
+      config = fallback;
+    }
+  }
 
   if (configErr || !config) {
     throw new Error(`WhatsApp not configured for account ${payload.accountId}`);
@@ -240,11 +253,21 @@ worker.registerHandler<MediaMirrorJobPayload>('media_mirror', async (job) => {
   const db = supabaseAdmin();
   const payload = job.payload;
 
-  const { data: config } = await db
+  let { data: config } = await db
     .from('whatsapp_config')
     .select('access_token')
     .eq('account_id', payload.accountId)
-    .single();
+    .maybeSingle();
+
+  if (!config) {
+    const { data: fallback } = await db
+      .from('whatsapp_config')
+      .select('access_token')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fallback) config = fallback;
+  }
 
   if (!config) return;
   const accessToken = decrypt(config.access_token);

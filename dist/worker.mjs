@@ -30344,7 +30344,11 @@ async function sendMessageToConversation(db, accountId, params) {
   const sendTarget = resolvedTarget.target;
   const hasValidPhone = resolvedTarget.isPhone;
   const sanitizedPhone = hasValidPhone ? sendTarget : "";
-  const { data: config, error: configError } = await db.from("whatsapp_config").select("*").eq("account_id", accountId).single();
+  let { data: config, error: configError } = await db.from("whatsapp_config").select("*").eq("account_id", accountId).maybeSingle();
+  if (!config) {
+    const { data: fallback } = await db.from("whatsapp_config").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (fallback) config = fallback;
+  }
   if (configError || !config) {
     throw new SendMessageError(
       "whatsapp_not_configured",
@@ -30711,7 +30715,14 @@ var init_conversation_scope = __esm({
 
 // src/lib/flows/meta-send.ts
 async function loadAccountMetaCredentials(db, accountId) {
-  const { data: config, error: configErr } = await db.from("whatsapp_config").select("phone_number_id, access_token").eq("account_id", accountId).single();
+  let { data: config, error: configErr } = await db.from("whatsapp_config").select("phone_number_id, access_token").eq("account_id", accountId).maybeSingle();
+  if (!config) {
+    const { data: fallback } = await db.from("whatsapp_config").select("phone_number_id, access_token").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (fallback) {
+      console.warn("[flows/meta-send] Falling back to latest whatsapp_config row for account:", accountId);
+      config = fallback;
+    }
+  }
   if (configErr || !config) {
     throw new Error(t6("send.notConfigured"));
   }
@@ -30914,8 +30925,14 @@ async function getCachedWhatsAppConfig(db, accountId, forceRefresh = false) {
       return cached2.config;
     }
   }
-  const query = db.from("whatsapp_config").select("phone_number_id, access_token, business_account_id, verify_token, mirror_inbound_media").eq("account_id", accountId);
-  const { data: config, error } = typeof query.single === "function" ? await query.single() : await query.maybeSingle();
+  let { data: config, error } = await db.from("whatsapp_config").select("*").eq("account_id", accountId).maybeSingle();
+  if (!config) {
+    const fallbackRes = await db.from("whatsapp_config").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (fallbackRes.data) {
+      console.warn("[config-cache] Falling back to default whatsapp_config row for account:", accountId);
+      config = fallbackRes.data;
+    }
+  }
   if (error || !config || !config.access_token) {
     if (error) {
       console.error("[config-cache] Error fetching whatsapp_config for account:", accountId, error.message);
@@ -30926,14 +30943,25 @@ async function getCachedWhatsAppConfig(db, accountId, forceRefresh = false) {
   try {
     decryptedToken = decrypt(config.access_token);
   } catch (err) {
-    console.error("[config-cache] Failed to decrypt access_token for account:", accountId, err);
-    return null;
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[config-cache] Failed to decrypt access_token for account:", accountId, msg);
+    throw new Error(
+      `Failed to decrypt WhatsApp access token (${msg}). Please verify ENCRYPTION_KEY in your environment or re-save WhatsApp settings in Settings \u2192 WhatsApp.`
+    );
+  }
+  let decryptedVerifyToken = null;
+  if (config.verify_token) {
+    try {
+      decryptedVerifyToken = decrypt(config.verify_token);
+    } catch {
+      decryptedVerifyToken = config.verify_token;
+    }
   }
   const result = {
     phoneNumberId: config.phone_number_id,
     accessToken: decryptedToken,
-    businessAccountId: config.business_account_id,
-    verifyToken: config.verify_token ? decrypt(config.verify_token) : null,
+    businessAccountId: config.waba_id ?? config.business_account_id ?? null,
+    verifyToken: decryptedVerifyToken,
     mirrorInboundMedia: config.mirror_inbound_media !== false
   };
   configCache.set(accountId, {
@@ -30968,7 +30996,7 @@ async function engineSendInteractive(args) {
     if (!resolvedInboundId && conversationId) {
       try {
         const { data: lastInbound } = await db.from("messages").select("message_id").eq("conversation_id", conversationId).eq("sender_type", "customer").order("created_at", { ascending: false }).limit(1).maybeSingle();
-        if (lastInbound?.message_id && lastInbound.message_id.startsWith("wamid.")) {
+        if (lastInbound?.message_id) {
           resolvedInboundId = lastInbound.message_id;
         }
       } catch {
@@ -30981,7 +31009,7 @@ async function engineSendInteractive(args) {
           accessToken: configData.accessToken,
           messageId: resolvedInboundId
         });
-        await new Promise((resolve) => setTimeout(resolve, 1e3));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       } catch (err) {
         console.warn("[automations] typing indicator failed (continuing):", err);
       }
@@ -31062,7 +31090,7 @@ async function sendViaMeta(input) {
   if (!inboundMessageId && input.conversationId) {
     try {
       const { data: lastInbound } = await db.from("messages").select("message_id").eq("conversation_id", input.conversationId).eq("sender_type", "customer").order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (lastInbound?.message_id && lastInbound.message_id.startsWith("wamid.")) {
+      if (lastInbound?.message_id) {
         inboundMessageId = lastInbound.message_id;
       }
     } catch {
@@ -31075,7 +31103,7 @@ async function sendViaMeta(input) {
         accessToken,
         messageId: inboundMessageId
       });
-      await new Promise((resolve) => setTimeout(resolve, 1e3));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     } catch (err) {
       console.warn("[automations] typing indicator failed (continuing):", err);
     }
@@ -38705,7 +38733,14 @@ worker.registerHandler("broadcast_recipient", async (job) => {
   const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
   const db = supabaseAdmin4();
   const payload = job.payload;
-  const { data: config, error: configErr } = await db.from("whatsapp_config").select("*").eq("account_id", payload.accountId).single();
+  let { data: config, error: configErr } = await db.from("whatsapp_config").select("*").eq("account_id", payload.accountId).maybeSingle();
+  if (!config) {
+    const { data: fallback } = await db.from("whatsapp_config").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (fallback) {
+      console.warn("[queue-worker] Falling back to primary whatsapp_config row for account:", payload.accountId);
+      config = fallback;
+    }
+  }
   if (configErr || !config) {
     throw new Error(`WhatsApp not configured for account ${payload.accountId}`);
   }
@@ -38805,7 +38840,11 @@ worker.registerHandler("media_mirror", async (job) => {
   const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
   const db = supabaseAdmin4();
   const payload = job.payload;
-  const { data: config } = await db.from("whatsapp_config").select("access_token").eq("account_id", payload.accountId).single();
+  let { data: config } = await db.from("whatsapp_config").select("access_token").eq("account_id", payload.accountId).maybeSingle();
+  if (!config) {
+    const { data: fallback } = await db.from("whatsapp_config").select("access_token").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (fallback) config = fallback;
+  }
   if (!config) return;
   const accessToken = decrypt2(config.access_token);
   const mirroredUrl = await mirrorInboundMedia2({

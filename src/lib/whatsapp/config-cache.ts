@@ -39,14 +39,28 @@ export async function getCachedWhatsAppConfig(
     }
   }
 
-  const query = db
+  // Query account config using select('*') to be resilient to column name variations across migrations
+  let { data: config, error } = await db
     .from('whatsapp_config')
-    .select('phone_number_id, access_token, business_account_id, verify_token, mirror_inbound_media')
-    .eq('account_id', accountId);
+    .select('*')
+    .eq('account_id', accountId)
+    .maybeSingle();
 
-  const { data: config, error } = typeof (query as unknown as { single?: unknown }).single === 'function'
-    ? await query.single()
-    : await query.maybeSingle();
+  // Fallback to the latest whatsapp_config record if no matching account_id found
+  // (handles single-tenant workspaces, legacy rows, or workspace id transitions)
+  if (!config) {
+    const fallbackRes = await db
+      .from('whatsapp_config')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (fallbackRes.data) {
+      console.warn('[config-cache] Falling back to default whatsapp_config row for account:', accountId);
+      config = fallbackRes.data;
+    }
+  }
 
   if (error || !config || !config.access_token) {
     if (error) {
@@ -59,15 +73,27 @@ export async function getCachedWhatsAppConfig(
   try {
     decryptedToken = decrypt(config.access_token);
   } catch (err) {
-    console.error('[config-cache] Failed to decrypt access_token for account:', accountId, err);
-    return null;
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[config-cache] Failed to decrypt access_token for account:', accountId, msg);
+    throw new Error(
+      `Failed to decrypt WhatsApp access token (${msg}). Please verify ENCRYPTION_KEY in your environment or re-save WhatsApp settings in Settings → WhatsApp.`
+    );
+  }
+
+  let decryptedVerifyToken: string | null = null;
+  if (config.verify_token) {
+    try {
+      decryptedVerifyToken = decrypt(config.verify_token);
+    } catch {
+      decryptedVerifyToken = config.verify_token;
+    }
   }
 
   const result: DecryptedWhatsAppConfig = {
     phoneNumberId: config.phone_number_id,
     accessToken: decryptedToken,
-    businessAccountId: config.business_account_id,
-    verifyToken: config.verify_token ? decrypt(config.verify_token) : null,
+    businessAccountId: config.waba_id ?? config.business_account_id ?? null,
+    verifyToken: decryptedVerifyToken,
     mirrorInboundMedia: config.mirror_inbound_media !== false,
   };
 

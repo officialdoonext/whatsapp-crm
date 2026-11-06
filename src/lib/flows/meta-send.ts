@@ -45,11 +45,25 @@ export async function loadAccountMetaCredentials(
   db: ReturnType<typeof supabaseAdmin>,
   accountId: string,
 ): Promise<{ phoneNumberId: string; accessToken: string }> {
-  const { data: config, error: configErr } = await db
+  let { data: config, error: configErr } = await db
     .from('whatsapp_config')
     .select('phone_number_id, access_token')
     .eq('account_id', accountId)
-    .single()
+    .maybeSingle()
+
+  if (!config) {
+    const { data: fallback } = await db
+      .from('whatsapp_config')
+      .select('phone_number_id, access_token')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (fallback) {
+      console.warn('[flows/meta-send] Falling back to latest whatsapp_config row for account:', accountId)
+      config = fallback
+    }
+  }
+
   if (configErr || !config) {
     throw new Error(t('send.notConfigured'))
   }

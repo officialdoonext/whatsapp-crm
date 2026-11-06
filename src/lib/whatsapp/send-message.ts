@@ -262,11 +262,21 @@ export async function sendMessageToConversation(
   const sanitizedPhone = hasValidPhone ? sendTarget : '';
 
   // WhatsApp config, account-scoped.
-  const { data: config, error: configError } = await db
+  let { data: config, error: configError } = await db
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', accountId)
-    .single();
+    .maybeSingle();
+
+  if (!config) {
+    const { data: fallback } = await db
+      .from('whatsapp_config')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fallback) config = fallback;
+  }
 
   if (configError || !config) {
     throw new SendMessageError(
