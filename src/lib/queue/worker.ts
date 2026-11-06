@@ -151,7 +151,7 @@ export class QueueWorker {
         await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs));
       } catch (err) {
         console.error('[queue-worker] Error in poll loop:', err);
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
     }
   }

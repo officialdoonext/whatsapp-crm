@@ -21313,10 +21313,19 @@ __export2(admin_client_exports, {
 });
 function supabaseAdmin() {
   if (!_adminClient) {
-    _adminClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    );
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+    if (!supabaseUrl) {
+      throw new Error(
+        "Supabase URL is required. Set NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL in your environment variables."
+      );
+    }
+    if (!serviceRoleKey) {
+      throw new Error(
+        "Supabase service role key is required. Set SUPABASE_SERVICE_ROLE_KEY in your environment variables."
+      );
+    }
+    _adminClient = createClient(supabaseUrl, serviceRoleKey);
   }
   return _adminClient;
 }
@@ -30028,10 +30037,19 @@ var init_encryption = __esm({
 // src/lib/flows/admin-client.ts
 function supabaseAdmin2() {
   if (!_adminClient2) {
-    _adminClient2 = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    );
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+    if (!supabaseUrl) {
+      throw new Error(
+        "Supabase URL is required. Set NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL in your environment variables."
+      );
+    }
+    if (!serviceRoleKey) {
+      throw new Error(
+        "Supabase service role key is required. Set SUPABASE_SERVICE_ROLE_KEY in your environment variables."
+      );
+    }
+    _adminClient2 = createClient(supabaseUrl, serviceRoleKey);
   }
   return _adminClient2;
 }
@@ -31938,10 +31956,19 @@ var init_webhook_processor = __esm({
 // src/lib/ai/admin-client.ts
 function supabaseAdmin3() {
   if (!_adminClient3) {
-    _adminClient3 = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    );
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+    if (!supabaseUrl) {
+      throw new Error(
+        "Supabase URL is required. Set NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL in your environment variables."
+      );
+    }
+    if (!serviceRoleKey) {
+      throw new Error(
+        "Supabase service role key is required. Set SUPABASE_SERVICE_ROLE_KEY in your environment variables."
+      );
+    }
+    _adminClient3 = createClient(supabaseUrl, serviceRoleKey);
   }
   return _adminClient3;
 }
@@ -38299,7 +38326,7 @@ var QueueWorker = class {
         await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs));
       } catch (err) {
         console.error("[queue-worker] Error in poll loop:", err);
-        await new Promise((resolve) => setTimeout(resolve, 2e3));
+        await new Promise((resolve) => setTimeout(resolve, 5e3));
       }
     }
   }
@@ -38392,11 +38419,24 @@ var QueueWorker = class {
 };
 
 // src/workers/index.ts
+var loadEnv = process.loadEnvFile;
+if (typeof loadEnv === "function") {
+  for (const envFile of [".env.local", ".env"]) {
+    try {
+      loadEnv(envFile);
+      break;
+    } catch {
+    }
+  }
+}
+var concurrency = process.env.WORKER_CONCURRENCY ? parseInt(process.env.WORKER_CONCURRENCY, 10) : 15;
+var pollIntervalMs = process.env.WORKER_POLL_INTERVAL_MS ? parseInt(process.env.WORKER_POLL_INTERVAL_MS, 10) : 200;
+var emptyBackoffMs = process.env.WORKER_EMPTY_BACKOFF_MS ? parseInt(process.env.WORKER_EMPTY_BACKOFF_MS, 10) : 1e3;
 var worker = new QueueWorker({
   workerId: `wacrm-worker-${process.pid}`,
-  concurrency: 15,
-  pollIntervalMs: 200,
-  emptyBackoffMs: 1e3
+  concurrency: isNaN(concurrency) ? 15 : concurrency,
+  pollIntervalMs: isNaN(pollIntervalMs) ? 200 : pollIntervalMs,
+  emptyBackoffMs: isNaN(emptyBackoffMs) ? 1e3 : emptyBackoffMs
 });
 worker.registerHandler("outbound_message", async (job) => {
   const { sendMessageToConversation: sendMessageToConversation2 } = await Promise.resolve().then(() => (init_send_message(), send_message_exports));
@@ -38544,6 +38584,22 @@ worker.registerHandler("media_mirror", async (job) => {
   }
 });
 if (process.argv[1]?.endsWith("workers/index.ts") || process.argv[1]?.endsWith("workers/index.js") || process.argv[1]?.endsWith("worker.mjs") || process.argv[1]?.includes("worker")) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error(
+      `
+[queue-worker] \u26A0\uFE0F  CONFIGURATION WARNING: Required environment variables are missing!
+  - Supabase URL (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL): ${supabaseUrl ? "OK" : "MISSING"}
+  - Supabase Service Role Key (SUPABASE_SERVICE_ROLE_KEY): ${serviceRoleKey ? "OK" : "MISSING"}
+  - WhatsApp Encryption Key (ENCRYPTION_KEY): ${process.env.ENCRYPTION_KEY ? "OK" : "MISSING"}
+
+-> If deploying on Railway, Coolify, or Docker:
+   Ensure these variables are added to the "queue-worker" service / container.
+   (In Railway: go to Project -> "queue-worker" service -> "Variables" tab and add them)
+`
+    );
+  }
   void worker.start();
 }
 export {

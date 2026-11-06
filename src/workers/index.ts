@@ -3,8 +3,21 @@
 //
 // Can be executed independently of Next.js:
 //   npm run worker
-//   node --env-file=.env.local dist/workers/index.js
+//   node --env-file=.env.local dist/worker.mjs
 // ============================================================
+
+// Attempt loading local env files if present (Node.js 20.6+)
+const loadEnv = (process as unknown as { loadEnvFile?: (path?: string) => void }).loadEnvFile;
+if (typeof loadEnv === 'function') {
+  for (const envFile of ['.env.local', '.env']) {
+    try {
+      loadEnv(envFile);
+      break;
+    } catch {
+      // Ignored if file does not exist
+    }
+  }
+}
 
 import { QueueWorker } from '@/lib/queue/worker';
 import type {
@@ -18,12 +31,22 @@ import type {
   MediaMirrorJobPayload,
 } from '@/lib/queue/types';
 
+const concurrency = process.env.WORKER_CONCURRENCY
+  ? parseInt(process.env.WORKER_CONCURRENCY, 10)
+  : 15;
+const pollIntervalMs = process.env.WORKER_POLL_INTERVAL_MS
+  ? parseInt(process.env.WORKER_POLL_INTERVAL_MS, 10)
+  : 200;
+const emptyBackoffMs = process.env.WORKER_EMPTY_BACKOFF_MS
+  ? parseInt(process.env.WORKER_EMPTY_BACKOFF_MS, 10)
+  : 1000;
+
 // Default worker instance
 export const worker = new QueueWorker({
   workerId: `wacrm-worker-${process.pid}`,
-  concurrency: 15,
-  pollIntervalMs: 200,
-  emptyBackoffMs: 1000,
+  concurrency: isNaN(concurrency) ? 15 : concurrency,
+  pollIntervalMs: isNaN(pollIntervalMs) ? 200 : pollIntervalMs,
+  emptyBackoffMs: isNaN(emptyBackoffMs) ? 1000 : emptyBackoffMs,
 });
 
 // Register job processors
@@ -223,6 +246,23 @@ if (
   process.argv[1]?.endsWith('worker.mjs') ||
   process.argv[1]?.includes('worker')
 ) {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error(
+      '\n[queue-worker] ⚠️  CONFIGURATION WARNING: Required environment variables are missing!\n' +
+        `  - Supabase URL (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL): ${supabaseUrl ? 'OK' : 'MISSING'}\n` +
+        `  - Supabase Service Role Key (SUPABASE_SERVICE_ROLE_KEY): ${serviceRoleKey ? 'OK' : 'MISSING'}\n` +
+        `  - WhatsApp Encryption Key (ENCRYPTION_KEY): ${process.env.ENCRYPTION_KEY ? 'OK' : 'MISSING'}\n\n` +
+        '-> If deploying on Railway, Coolify, or Docker:\n' +
+        '   Ensure these variables are added to the "queue-worker" service / container.\n' +
+        '   (In Railway: go to Project -> "queue-worker" service -> "Variables" tab and add them)\n'
+    );
+  }
+
   void worker.start();
 }
 
