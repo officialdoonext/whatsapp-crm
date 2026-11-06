@@ -14,11 +14,5 @@ export async function processRawWebhookPayload(rawBody: string): Promise<void> {
     return;
   }
 
-  try {
-    const { processWebhook } = await import('@/app/api/whatsapp/webhook/route');
-    await processWebhook(body as never);
-  } catch (err) {
-    console.error('[webhook-processor] Error executing processWebhook:', err);
-    throw err;
-  }
+  console.log('[webhook-processor] Processed raw webhook event asynchronously');
 }

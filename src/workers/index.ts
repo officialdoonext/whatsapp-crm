@@ -217,7 +217,12 @@ worker.registerHandler<MediaMirrorJobPayload>('media_mirror', async (job) => {
 });
 
 // Auto-start if executed directly from CLI / runner
-if (process.argv[1]?.endsWith('workers/index.ts') || process.argv[1]?.endsWith('workers/index.js')) {
+if (
+  process.argv[1]?.endsWith('workers/index.ts') ||
+  process.argv[1]?.endsWith('workers/index.js') ||
+  process.argv[1]?.endsWith('worker.mjs') ||
+  process.argv[1]?.includes('worker')
+) {
   void worker.start();
 }
 

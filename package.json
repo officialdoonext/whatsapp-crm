@@ -30,7 +30,8 @@
   "packageManager": "npm@10.9.9",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npm run build:worker",
+    "build:worker": "esbuild src/workers/index.ts --bundle --platform=node --format=esm --packages=external --alias:next/server=next/server.js --outfile=dist/worker.mjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -38,7 +39,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "worker": "tsx src/workers/index.ts"
+    "worker": "node dist/worker.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -63,6 +64,7 @@
     "shadcn": "^4.16.2",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
+    "esbuild": "^0.25.0",
     "tsx": "^4.23.15",
     "tw-animate-css": "^1.4.0"
   },
