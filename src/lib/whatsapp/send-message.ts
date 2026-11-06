@@ -41,6 +41,7 @@ import {
   type InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive';
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
+import { getCachedWhatsAppConfig } from '@/lib/whatsapp/config-cache';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
   phoneVariants,
@@ -261,24 +262,9 @@ export async function sendMessageToConversation(
   const hasValidPhone = resolvedTarget.isPhone;
   const sanitizedPhone = hasValidPhone ? sendTarget : '';
 
-  // WhatsApp config, account-scoped.
-  let { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .maybeSingle();
-
-  if (!config) {
-    const { data: fallback } = await db
-      .from('whatsapp_config')
-      .select('*')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (fallback) config = fallback;
-  }
-
-  if (configError || !config) {
+  // WhatsApp config, cached in-memory with automatic TTL refresh
+  const cachedConfig = await getCachedWhatsAppConfig(db, accountId);
+  if (!cachedConfig) {
     throw new SendMessageError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
@@ -286,23 +272,12 @@ export async function sendMessageToConversation(
     );
   }
 
-  const accessToken = decrypt(config.access_token);
-
-  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
-    void db
-      .from('whatsapp_config')
-      .update({ access_token: encrypt(accessToken) })
-      .eq('id', config.id)
-      .then(({ error }: { error: { message: string } | null }) => {
-        if (error) {
-          console.warn(
-            '[send-message] access_token GCM upgrade failed:',
-            error.message
-          );
-        }
-      });
-  }
+  const accessToken = cachedConfig.accessToken;
+  const config = {
+    phone_number_id: cachedConfig.phoneNumberId,
+    access_token: cachedConfig.accessToken,
+    waba_id: cachedConfig.businessAccountId,
+  };
 
   // Resolve the reply target to its Meta message_id. The parent must
   // belong to this same conversation — otherwise a caller could quote

@@ -40,25 +40,54 @@ export async function getCachedWhatsAppConfig(
   }
 
   // Query account config using select('*') to be resilient to column name variations across migrations
-  let { data: config, error } = await db
+  const builder = db
     .from('whatsapp_config')
     .select('*')
-    .eq('account_id', accountId)
-    .maybeSingle();
+    .eq('account_id', accountId) as unknown as {
+      maybeSingle?: () => Promise<{ data: any; error: any }>;
+      single?: () => Promise<{ data: any; error: any }>;
+    };
+
+  let config: any = null;
+  let error: any = null;
+
+  if (typeof builder?.maybeSingle === 'function') {
+    const res = await builder.maybeSingle();
+    config = res?.data;
+    error = res?.error;
+  }
+
+  if (!config && typeof builder?.single === 'function') {
+    try {
+      const singleRes = await builder.single();
+      if (singleRes?.data) {
+        config = singleRes.data;
+        error = singleRes.error;
+      }
+    } catch {
+      // Ignore
+    }
+  }
 
   // Fallback to the latest whatsapp_config record if no matching account_id found
   // (handles single-tenant workspaces, legacy rows, or workspace id transitions)
   if (!config) {
-    const fallbackRes = await db
-      .from('whatsapp_config')
-      .select('*')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const query = db.from('whatsapp_config').select('*') as unknown as {
+      order?: (col: string, opts?: { ascending?: boolean }) => {
+        limit: (n: number) => { maybeSingle: () => Promise<{ data: typeof config }> }
+      };
+    };
 
-    if (fallbackRes.data) {
-      console.warn('[config-cache] Falling back to default whatsapp_config row for account:', accountId);
-      config = fallbackRes.data;
+    if (typeof query.order === 'function') {
+      const fallbackRes = await query
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fallbackRes.data) {
+        console.warn('[config-cache] Falling back to default whatsapp_config row for account:', accountId);
+        config = fallbackRes.data;
+      }
     }
   }
 

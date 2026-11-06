@@ -1,4 +1,6 @@
 import { NextResponse, after } from 'next/server'
+import '@/workers/websocket-polyfill'
+import { StubWebSocket } from '@/workers/websocket-polyfill'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
@@ -37,7 +39,16 @@ function supabaseAdmin() {
   if (!_adminClient) {
     _adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+        realtime: {
+          transport: StubWebSocket as never,
+        },
+      }
     )
   }
   return _adminClient

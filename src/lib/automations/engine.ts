@@ -346,38 +346,29 @@ interface PendingRow {
 async function executeAutomation(automation: Automation, input: DispatchInput) {
   const db = supabaseAdmin()
 
-  const { data: log, error: logErr } = await db
-    .from('automation_logs')
-    .insert({
-      automation_id: automation.id,
-      // Tenancy: matches automation.account_id (NOT NULL post-017).
-      account_id: automation.account_id,
-      // Audit: keeps the historical "author of this automation"
-      // pointer so logs still attribute to the right user even
-      // after teammates join the account.
-      user_id: automation.user_id,
-      contact_id: input.contactId ?? null,
-      trigger_event: input.triggerType,
-      steps_executed: [],
-      // Seeded pessimistically. The row is written BEFORE any step runs,
-      // and every terminal path below overwrites it (`appendResults` at
-      // the outermost scope, or `finalizeLog`). Seeding 'success' meant a
-      // run that died mid-flight — the process frozen, the pod recycled —
-      // left a permanent `status: 'success'` with `steps_executed: []`,
-      // indistinguishable from an automation that genuinely had nothing
-      // to do. 'failed' inverts that: the status only becomes success if
-      // execution actually reached the end. See issue #409.
-      status: 'failed',
-    })
-    .select()
-    .single()
+  // Parallelize log initialization with steps loading to eliminate sequential DB round-trip latency
+  const [logRes, preloadedSteps] = await Promise.all([
+    db
+      .from('automation_logs')
+      .insert({
+        automation_id: automation.id,
+        account_id: automation.account_id,
+        user_id: automation.user_id,
+        contact_id: input.contactId ?? null,
+        trigger_event: input.triggerType,
+        steps_executed: [],
+        status: 'failed',
+      })
+      .select()
+      .single(),
+    loadAllAutomationSteps(db, automation.id),
+  ])
 
-  if (logErr || !log) {
-    console.error('[automations] cannot create log:', logErr)
+  const log = logRes.data
+  if (logRes.error || !log) {
+    console.error('[automations] cannot create log:', logRes.error)
     return
   }
-
-  const preloadedSteps = await loadAllAutomationSteps(db, automation.id)
 
   await executeStepsFrom({
     automation,
@@ -392,16 +383,14 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
     verifiedConversationId: input.context?.conversation_id,
   })
 
-  // Atomic counter update via the SQL function from migration 007.
-  // Doing this with a client-side read-modify-write raced when the
-  // same automation fired for two contacts simultaneously — both
-  // would read N and both write N+1, losing one count permanently.
-  const { error: rpcErr } = await db.rpc('increment_automation_execution_count', {
+  // Non-blocking counter update so we don't wait for RPC round-trip
+  void db.rpc('increment_automation_execution_count', {
     p_automation_id: automation.id,
+  }).then(({ error: rpcErr }: { error: unknown }) => {
+    if (rpcErr) {
+      console.error('[automations] increment counter failed:', rpcErr)
+    }
   })
-  if (rpcErr) {
-    console.error('[automations] increment counter failed:', rpcErr)
-  }
 }
 
 interface ExecuteArgs {
@@ -528,6 +517,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<ScopeOutcome> {
             accountId: args.automation.account_id,
             queueName: 'automations',
             jobType: 'delayed_automation_step',
+            priority: 2,
             runAt: new Date(Date.now() + ms),
             payload: {
               pendingExecutionId: pendingInsert.id,

@@ -115,16 +115,14 @@ export async function engineSendInteractive(
     }
 
     if (resolvedInboundId) {
-      try {
-        await sendTypingIndicator({
-          phoneNumberId: configData.phoneNumberId,
-          accessToken: configData.accessToken,
-          messageId: resolvedInboundId,
-        })
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-      } catch (err) {
+      // Send typing indicator non-blocking (fire-and-forget) to avoid delaying delivery
+      void sendTypingIndicator({
+        phoneNumberId: configData.phoneNumberId,
+        accessToken: configData.accessToken,
+        messageId: resolvedInboundId,
+      }).catch((err) => {
         console.warn('[automations] typing indicator failed (continuing):', err)
-      }
+      })
     }
   }
 
@@ -251,17 +249,14 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   }
 
   if (inboundMessageId) {
-    try {
-      await sendTypingIndicator({
-        phoneNumberId: configData.phoneNumberId,
-        accessToken,
-        messageId: inboundMessageId,
-      })
-      // Natural pause so the customer sees "typing..." before the message arrives
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-    } catch (err) {
+    // Send typing indicator non-blocking (fire-and-forget) to avoid delaying delivery
+    void sendTypingIndicator({
+      phoneNumberId: configData.phoneNumberId,
+      accessToken,
+      messageId: inboundMessageId,
+    }).catch((err) => {
       console.warn('[automations] typing indicator failed (continuing):', err)
-    }
+    })
   }
 
   // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and

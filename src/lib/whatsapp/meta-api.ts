@@ -138,6 +138,7 @@ export async function fetchMeta(
 
     try {
       const response = await fetch(url, {
+        keepalive: true,
         ...options,
         signal: options.signal || controller.signal,
       })

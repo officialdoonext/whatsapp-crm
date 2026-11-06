@@ -15,6 +15,7 @@ import {
 } from '@/lib/whatsapp/phone-utils'
 import { resolveContactSendTarget } from '@/lib/whatsapp/wa-identity'
 import { assertConversationInAccount } from '@/lib/whatsapp/conversation-scope'
+import { getCachedWhatsAppConfig } from '@/lib/whatsapp/config-cache'
 import { supabaseAdmin } from './admin-client'
 import { getT } from '@/lib/i18n/translate'
 
@@ -45,31 +46,13 @@ export async function loadAccountMetaCredentials(
   db: ReturnType<typeof supabaseAdmin>,
   accountId: string,
 ): Promise<{ phoneNumberId: string; accessToken: string }> {
-  let { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('phone_number_id, access_token')
-    .eq('account_id', accountId)
-    .maybeSingle()
-
-  if (!config) {
-    const { data: fallback } = await db
-      .from('whatsapp_config')
-      .select('phone_number_id, access_token')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (fallback) {
-      console.warn('[flows/meta-send] Falling back to latest whatsapp_config row for account:', accountId)
-      config = fallback
-    }
-  }
-
-  if (configErr || !config) {
+  const cached = await getCachedWhatsAppConfig(db, accountId)
+  if (!cached) {
     throw new Error(t('send.notConfigured'))
   }
   return {
-    phoneNumberId: config.phone_number_id,
-    accessToken: decrypt(config.access_token),
+    phoneNumberId: cached.phoneNumberId,
+    accessToken: cached.accessToken,
   }
 }
 

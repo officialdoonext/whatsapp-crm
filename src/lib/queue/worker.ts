@@ -46,8 +46,8 @@ export class QueueWorker {
       'media',
     ];
     this.concurrency = Math.max(1, options.concurrency ?? 10);
-    this.pollIntervalMs = options.pollIntervalMs ?? 200;
-    this.emptyBackoffMs = options.emptyBackoffMs ?? 1500;
+    this.pollIntervalMs = options.pollIntervalMs ?? 50;
+    this.emptyBackoffMs = options.emptyBackoffMs ?? 250;
     this.lockTimeoutSeconds = options.lockTimeoutSeconds ?? 300;
     this.maxBackoffMinutes = options.maxBackoffMinutes ?? 60;
     this.customDb = options.client;
@@ -183,9 +183,13 @@ export class QueueWorker {
 
     const startTime = Date.now();
     const waitTimeMs = Math.max(0, startTime - new Date(job.run_at).getTime());
+    const queueWaitMs = job.enqueued_at ? Math.max(0, startTime - new Date(job.enqueued_at).getTime()) : waitTimeMs;
+    const e2eLatencyMs = job.webhook_received_at ? Math.max(0, startTime - new Date(job.webhook_received_at).getTime()) : undefined;
+
     recordMetric('queue_wait_time_ms', waitTimeMs, 'ms', {
       job_type: job.job_type,
       queue: job.queue_name,
+      priority: job.priority ?? 3,
       account_id: job.account_id ?? 'system',
     });
     recordMetric('worker_concurrency_active', this.activeJobsCount, 'count', {
@@ -195,12 +199,18 @@ export class QueueWorker {
     try {
       await handler(job);
       const durationMs = Date.now() - startTime;
+      const timings: Record<string, number> = {
+        queue_wait_ms: queueWaitMs,
+        exec_ms: durationMs,
+        ...(e2eLatencyMs ? { e2e_latency_ms: e2eLatencyMs + durationMs } : {}),
+      };
+
       recordMetric('job_processing_time_ms', durationMs, 'ms', {
         job_type: job.job_type,
         status: 'completed',
         account_id: job.account_id ?? 'system',
       });
-      await this.settle(job.id, 'completed');
+      await this.settle(job.id, 'completed', undefined, timings);
     } catch (err) {
       const durationMs = Date.now() - startTime;
       const errorMessage = err instanceof Error ? err.message : String(err);

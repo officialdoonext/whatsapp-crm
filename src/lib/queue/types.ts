@@ -101,6 +101,7 @@ export interface JobRow<T = Record<string, unknown>> {
   account_id: string | null;
   queue_name: QueueName;
   job_type: JobType;
+  priority: number;
   payload: T;
   status: JobStatus;
   attempts: number;
@@ -111,6 +112,13 @@ export interface JobRow<T = Record<string, unknown>> {
   idempotency_key: string | null;
   error_message: string | null;
   last_error: Record<string, unknown> | null;
+  webhook_received_at: string | null;
+  enqueued_at: string;
+  claimed_at: string | null;
+  execution_started_at: string | null;
+  execution_completed_at: string | null;
+  meta_accepted_at: string | null;
+  timings: Record<string, number | string>;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -120,10 +128,12 @@ export interface EnqueueJobOptions<K extends JobType = JobType> {
   accountId?: string | null;
   queueName: QueueName;
   jobType: K;
+  priority?: number; // 1 = highest / instant, 3 = normal, 5 = background
   payload: JobPayloadMap[K] | Record<string, unknown>;
   idempotencyKey?: string | null;
   runAt?: Date | string;
   maxAttempts?: number;
+  webhookReceivedAt?: Date | string;
 }
 
 export interface JobResult {

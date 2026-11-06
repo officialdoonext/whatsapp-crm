@@ -42,6 +42,52 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/workers/websocket-polyfill.ts
+var StubWebSocket;
+var init_websocket_polyfill = __esm({
+  "src/workers/websocket-polyfill.ts"() {
+    "use strict";
+    StubWebSocket = class {
+      constructor() {
+        this.CONNECTING = 0;
+        this.OPEN = 1;
+        this.CLOSING = 2;
+        this.CLOSED = 3;
+        this.readyState = 3;
+        this.url = "";
+        this.protocol = "";
+        this.onopen = null;
+        this.onmessage = null;
+        this.onclose = null;
+        this.onerror = null;
+      }
+      static {
+        this.CONNECTING = 0;
+      }
+      static {
+        this.OPEN = 1;
+      }
+      static {
+        this.CLOSING = 2;
+      }
+      static {
+        this.CLOSED = 3;
+      }
+      close() {
+      }
+      send() {
+      }
+      addEventListener() {
+      }
+      removeEventListener() {
+      }
+    };
+    if (typeof globalThis.WebSocket === "undefined") {
+      globalThis.WebSocket = StubWebSocket;
+    }
+  }
+});
+
 // node_modules/tslib/tslib.es6.mjs
 var tslib_es6_exports = {};
 __export2(tslib_es6_exports, {
@@ -21338,50 +21384,14 @@ function supabaseAdmin() {
   }
   return _adminClient;
 }
-var _adminClient, StubWebSocket;
+var _adminClient;
 var init_admin_client = __esm({
   "src/lib/automations/admin-client.ts"() {
     "use strict";
+    init_websocket_polyfill();
     init_dist4();
+    init_websocket_polyfill();
     _adminClient = null;
-    StubWebSocket = class {
-      constructor() {
-        this.CONNECTING = 0;
-        this.OPEN = 1;
-        this.CLOSING = 2;
-        this.CLOSED = 3;
-        this.readyState = 3;
-        this.url = "";
-        this.protocol = "";
-        this.onopen = null;
-        this.onmessage = null;
-        this.onclose = null;
-        this.onerror = null;
-      }
-      static {
-        this.CONNECTING = 0;
-      }
-      static {
-        this.OPEN = 1;
-      }
-      static {
-        this.CLOSING = 2;
-      }
-      static {
-        this.CLOSED = 3;
-      }
-      close() {
-      }
-      send() {
-      }
-      addEventListener() {
-      }
-      removeEventListener() {
-      }
-    };
-    if (typeof globalThis.WebSocket === "undefined") {
-      globalThis.WebSocket = StubWebSocket;
-    }
   }
 });
 
@@ -28947,6 +28957,7 @@ async function fetchMeta(url, options, isOutboundSend = false) {
     const startMs = Date.now();
     try {
       const response = await fetch(url, {
+        keepalive: true,
         ...options,
         signal: options.signal || controller.signal
       });
@@ -30001,12 +30012,6 @@ var init_interactive = __esm({
 });
 
 // src/lib/whatsapp/encryption.ts
-var encryption_exports = {};
-__export2(encryption_exports, {
-  decrypt: () => decrypt,
-  encrypt: () => encrypt,
-  isLegacyFormat: () => isLegacyFormat
-});
 import crypto2 from "crypto";
 function getKey() {
   const key = process.env.ENCRYPTION_KEY;
@@ -30014,18 +30019,6 @@ function getKey() {
     throw new Error("ENCRYPTION_KEY environment variable is missing.");
   }
   return Buffer.from(key, "hex");
-}
-function encrypt(text) {
-  const iv = crypto2.randomBytes(GCM_IV_LENGTH);
-  const cipher = crypto2.createCipheriv(
-    "aes-256-gcm",
-    getKey(),
-    iv
-  );
-  let encrypted = cipher.update(text, "utf8", "hex");
-  encrypted += cipher.final("hex");
-  const authTag = cipher.getAuthTag();
-  return `${iv.toString("hex")}:${encrypted}:${authTag.toString("hex")}`;
 }
 function decrypt(encryptedText) {
   const parts = encryptedText.split(":");
@@ -30074,9 +30067,6 @@ function decrypt(encryptedText) {
     `Encrypted token has unrecognised format (expected 1 or 2 colons, got ${parts.length - 1})`
   );
 }
-function isLegacyFormat(encryptedText) {
-  return encryptedText.split(":").length === 2;
-}
 var GCM_IV_LENGTH, CBC_IV_LENGTH, AUTH_TAG_LENGTH;
 var init_encryption = __esm({
   "src/lib/whatsapp/encryption.ts"() {
@@ -30084,6 +30074,82 @@ var init_encryption = __esm({
     GCM_IV_LENGTH = 12;
     CBC_IV_LENGTH = 16;
     AUTH_TAG_LENGTH = 16;
+  }
+});
+
+// src/lib/whatsapp/config-cache.ts
+var config_cache_exports = {};
+__export2(config_cache_exports, {
+  clearWhatsAppConfigCache: () => clearWhatsAppConfigCache,
+  getCachedWhatsAppConfig: () => getCachedWhatsAppConfig,
+  invalidateWhatsAppConfig: () => invalidateWhatsAppConfig
+});
+async function getCachedWhatsAppConfig(db, accountId, forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh) {
+    const cached2 = configCache.get(accountId);
+    if (cached2 && cached2.expiresAt > now) {
+      return cached2.config;
+    }
+  }
+  let { data: config, error } = await db.from("whatsapp_config").select("*").eq("account_id", accountId).maybeSingle();
+  if (!config) {
+    const fallbackRes = await db.from("whatsapp_config").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (fallbackRes.data) {
+      console.warn("[config-cache] Falling back to default whatsapp_config row for account:", accountId);
+      config = fallbackRes.data;
+    }
+  }
+  if (error || !config || !config.access_token) {
+    if (error) {
+      console.error("[config-cache] Error fetching whatsapp_config for account:", accountId, error.message);
+    }
+    return null;
+  }
+  let decryptedToken = "";
+  try {
+    decryptedToken = decrypt(config.access_token);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[config-cache] Failed to decrypt access_token for account:", accountId, msg);
+    throw new Error(
+      `Failed to decrypt WhatsApp access token (${msg}). Please verify ENCRYPTION_KEY in your environment or re-save WhatsApp settings in Settings \u2192 WhatsApp.`
+    );
+  }
+  let decryptedVerifyToken = null;
+  if (config.verify_token) {
+    try {
+      decryptedVerifyToken = decrypt(config.verify_token);
+    } catch {
+      decryptedVerifyToken = config.verify_token;
+    }
+  }
+  const result = {
+    phoneNumberId: config.phone_number_id,
+    accessToken: decryptedToken,
+    businessAccountId: config.waba_id ?? config.business_account_id ?? null,
+    verifyToken: decryptedVerifyToken,
+    mirrorInboundMedia: config.mirror_inbound_media !== false
+  };
+  configCache.set(accountId, {
+    config: result,
+    expiresAt: now + CONFIG_CACHE_TTL_MS
+  });
+  return result;
+}
+function invalidateWhatsAppConfig(accountId) {
+  configCache.delete(accountId);
+}
+function clearWhatsAppConfigCache() {
+  configCache.clear();
+}
+var CONFIG_CACHE_TTL_MS, configCache;
+var init_config_cache = __esm({
+  "src/lib/whatsapp/config-cache.ts"() {
+    "use strict";
+    init_encryption();
+    CONFIG_CACHE_TTL_MS = 5 * 60 * 1e3;
+    configCache = /* @__PURE__ */ new Map();
   }
 });
 
@@ -30102,7 +30168,7 @@ function supabaseAdmin2() {
         "Supabase service role key is required. Set SUPABASE_SERVICE_ROLE_KEY in your environment variables."
       );
     }
-    const transport = typeof globalThis.WebSocket !== "undefined" ? globalThis.WebSocket : StubWebSocket2;
+    const transport = typeof globalThis.WebSocket !== "undefined" ? globalThis.WebSocket : StubWebSocket;
     _adminClient2 = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
         persistSession: false,
@@ -30115,50 +30181,14 @@ function supabaseAdmin2() {
   }
   return _adminClient2;
 }
-var _adminClient2, StubWebSocket2;
+var _adminClient2;
 var init_admin_client2 = __esm({
   "src/lib/flows/admin-client.ts"() {
     "use strict";
+    init_websocket_polyfill();
     init_dist4();
+    init_websocket_polyfill();
     _adminClient2 = null;
-    StubWebSocket2 = class {
-      constructor() {
-        this.CONNECTING = 0;
-        this.OPEN = 1;
-        this.CLOSING = 2;
-        this.CLOSED = 3;
-        this.readyState = 3;
-        this.url = "";
-        this.protocol = "";
-        this.onopen = null;
-        this.onmessage = null;
-        this.onclose = null;
-        this.onerror = null;
-      }
-      static {
-        this.CONNECTING = 0;
-      }
-      static {
-        this.OPEN = 1;
-      }
-      static {
-        this.CLOSING = 2;
-      }
-      static {
-        this.CLOSED = 3;
-      }
-      close() {
-      }
-      send() {
-      }
-      addEventListener() {
-      }
-      removeEventListener() {
-      }
-    };
-    if (typeof globalThis.WebSocket === "undefined") {
-      globalThis.WebSocket = StubWebSocket2;
-    }
   }
 });
 
@@ -30344,29 +30374,20 @@ async function sendMessageToConversation(db, accountId, params) {
   const sendTarget = resolvedTarget.target;
   const hasValidPhone = resolvedTarget.isPhone;
   const sanitizedPhone = hasValidPhone ? sendTarget : "";
-  let { data: config, error: configError } = await db.from("whatsapp_config").select("*").eq("account_id", accountId).maybeSingle();
-  if (!config) {
-    const { data: fallback } = await db.from("whatsapp_config").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
-    if (fallback) config = fallback;
-  }
-  if (configError || !config) {
+  const cachedConfig = await getCachedWhatsAppConfig(db, accountId);
+  if (!cachedConfig) {
     throw new SendMessageError(
       "whatsapp_not_configured",
       "WhatsApp not configured. Please set up your WhatsApp integration first.",
       400
     );
   }
-  const accessToken = decrypt(config.access_token);
-  if (isLegacyFormat(config.access_token)) {
-    void db.from("whatsapp_config").update({ access_token: encrypt(accessToken) }).eq("id", config.id).then(({ error }) => {
-      if (error) {
-        console.warn(
-          "[send-message] access_token GCM upgrade failed:",
-          error.message
-        );
-      }
-    });
-  }
+  const accessToken = cachedConfig.accessToken;
+  const config = {
+    phone_number_id: cachedConfig.phoneNumberId,
+    access_token: cachedConfig.accessToken,
+    waba_id: cachedConfig.businessAccountId
+  };
   let contextMessageId;
   if (replyToMessageId) {
     const { data: parent, error: parentError } = await db.from("messages").select("message_id, conversation_id").eq("id", replyToMessageId).eq("conversation_id", conversationId).maybeSingle();
@@ -30614,7 +30635,7 @@ var init_send_message = __esm({
     init_meta_api();
     init_meta_catalog();
     init_interactive();
-    init_encryption();
+    init_config_cache();
     init_admin_client2();
     init_phone_utils();
     init_wa_identity();
@@ -30715,20 +30736,13 @@ var init_conversation_scope = __esm({
 
 // src/lib/flows/meta-send.ts
 async function loadAccountMetaCredentials(db, accountId) {
-  let { data: config, error: configErr } = await db.from("whatsapp_config").select("phone_number_id, access_token").eq("account_id", accountId).maybeSingle();
-  if (!config) {
-    const { data: fallback } = await db.from("whatsapp_config").select("phone_number_id, access_token").order("updated_at", { ascending: false }).limit(1).maybeSingle();
-    if (fallback) {
-      console.warn("[flows/meta-send] Falling back to latest whatsapp_config row for account:", accountId);
-      config = fallback;
-    }
-  }
-  if (configErr || !config) {
+  const cached2 = await getCachedWhatsAppConfig(db, accountId);
+  if (!cached2) {
     throw new Error(t6("send.notConfigured"));
   }
   return {
-    phoneNumberId: config.phone_number_id,
-    accessToken: decrypt(config.access_token)
+    phoneNumberId: cached2.phoneNumberId,
+    accessToken: cached2.accessToken
   };
 }
 async function engineSendText(args) {
@@ -30906,77 +30920,13 @@ var init_meta_send = __esm({
   "src/lib/flows/meta-send.ts"() {
     "use strict";
     init_meta_api();
-    init_encryption();
     init_phone_utils();
     init_wa_identity();
     init_conversation_scope();
+    init_config_cache();
     init_admin_client2();
     init_translate();
     t6 = getT("LibErrors");
-  }
-});
-
-// src/lib/whatsapp/config-cache.ts
-async function getCachedWhatsAppConfig(db, accountId, forceRefresh = false) {
-  const now = Date.now();
-  if (!forceRefresh) {
-    const cached2 = configCache.get(accountId);
-    if (cached2 && cached2.expiresAt > now) {
-      return cached2.config;
-    }
-  }
-  let { data: config, error } = await db.from("whatsapp_config").select("*").eq("account_id", accountId).maybeSingle();
-  if (!config) {
-    const fallbackRes = await db.from("whatsapp_config").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
-    if (fallbackRes.data) {
-      console.warn("[config-cache] Falling back to default whatsapp_config row for account:", accountId);
-      config = fallbackRes.data;
-    }
-  }
-  if (error || !config || !config.access_token) {
-    if (error) {
-      console.error("[config-cache] Error fetching whatsapp_config for account:", accountId, error.message);
-    }
-    return null;
-  }
-  let decryptedToken = "";
-  try {
-    decryptedToken = decrypt(config.access_token);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[config-cache] Failed to decrypt access_token for account:", accountId, msg);
-    throw new Error(
-      `Failed to decrypt WhatsApp access token (${msg}). Please verify ENCRYPTION_KEY in your environment or re-save WhatsApp settings in Settings \u2192 WhatsApp.`
-    );
-  }
-  let decryptedVerifyToken = null;
-  if (config.verify_token) {
-    try {
-      decryptedVerifyToken = decrypt(config.verify_token);
-    } catch {
-      decryptedVerifyToken = config.verify_token;
-    }
-  }
-  const result = {
-    phoneNumberId: config.phone_number_id,
-    accessToken: decryptedToken,
-    businessAccountId: config.waba_id ?? config.business_account_id ?? null,
-    verifyToken: decryptedVerifyToken,
-    mirrorInboundMedia: config.mirror_inbound_media !== false
-  };
-  configCache.set(accountId, {
-    config: result,
-    expiresAt: now + CONFIG_CACHE_TTL_MS
-  });
-  return result;
-}
-var CONFIG_CACHE_TTL_MS, configCache;
-var init_config_cache = __esm({
-  "src/lib/whatsapp/config-cache.ts"() {
-    "use strict";
-    init_encryption();
-    CONFIG_CACHE_TTL_MS = 5 * 60 * 1e3;
-    configCache = /* @__PURE__ */ new Map();
   }
 });
 
@@ -31003,16 +30953,13 @@ async function engineSendInteractive(args) {
       }
     }
     if (resolvedInboundId) {
-      try {
-        await sendTypingIndicator({
-          phoneNumberId: configData.phoneNumberId,
-          accessToken: configData.accessToken,
-          messageId: resolvedInboundId
-        });
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      } catch (err) {
+      void sendTypingIndicator({
+        phoneNumberId: configData.phoneNumberId,
+        accessToken: configData.accessToken,
+        messageId: resolvedInboundId
+      }).catch((err) => {
         console.warn("[automations] typing indicator failed (continuing):", err);
-      }
+      });
     }
   }
   const common = { accountId, userId, conversationId, contactId };
@@ -31097,16 +31044,13 @@ async function sendViaMeta(input) {
     }
   }
   if (inboundMessageId) {
-    try {
-      await sendTypingIndicator({
-        phoneNumberId: configData.phoneNumberId,
-        accessToken,
-        messageId: inboundMessageId
-      });
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-    } catch (err) {
+    void sendTypingIndicator({
+      phoneNumberId: configData.phoneNumberId,
+      accessToken,
+      messageId: inboundMessageId
+    }).catch((err) => {
       console.warn("[automations] typing indicator failed (continuing):", err);
-    }
+    });
   }
   const variants = sendTarget.isPhone ? phoneVariants(sanitized) : [sanitized];
   let workingPhone = sanitized;
@@ -31313,16 +31257,20 @@ __export2(client_exports, {
 async function enqueueJob(options, client) {
   const db = client ?? supabaseAdmin();
   const runAtIso = options.runAt ? options.runAt instanceof Date ? options.runAt.toISOString() : options.runAt : (/* @__PURE__ */ new Date()).toISOString();
+  const webhookReceivedAtIso = options.webhookReceivedAt ? options.webhookReceivedAt instanceof Date ? options.webhookReceivedAt.toISOString() : options.webhookReceivedAt : null;
   const insertData = {
     account_id: options.accountId ?? null,
     queue_name: options.queueName,
     job_type: options.jobType,
+    priority: options.priority ?? 3,
     payload: options.payload,
     status: "pending",
     attempts: 0,
     max_attempts: options.maxAttempts ?? 5,
     run_at: runAtIso,
-    idempotency_key: options.idempotencyKey ?? null
+    idempotency_key: options.idempotencyKey ?? null,
+    webhook_received_at: webhookReceivedAtIso,
+    enqueued_at: (/* @__PURE__ */ new Date()).toISOString()
   };
   const { data, error } = await db.from("jobs_queue").insert(insertData).select("id").maybeSingle();
   if (error) {
@@ -31341,12 +31289,15 @@ async function enqueueJobsBatch(jobs, client) {
     account_id: j.accountId ?? null,
     queue_name: j.queueName,
     job_type: j.jobType,
+    priority: j.priority ?? 3,
     payload: j.payload,
     status: "pending",
     attempts: 0,
     max_attempts: j.maxAttempts ?? 5,
     run_at: j.runAt ? j.runAt instanceof Date ? j.runAt.toISOString() : j.runAt : (/* @__PURE__ */ new Date()).toISOString(),
-    idempotency_key: j.idempotencyKey ?? null
+    idempotency_key: j.idempotencyKey ?? null,
+    webhook_received_at: j.webhookReceivedAt ? j.webhookReceivedAt instanceof Date ? j.webhookReceivedAt.toISOString() : j.webhookReceivedAt : null,
+    enqueued_at: (/* @__PURE__ */ new Date()).toISOString()
   }));
   const { data, error } = await db.from("jobs_queue").insert(rows).select("id");
   if (error) {
@@ -31522,32 +31473,23 @@ async function expireAwaitingReplies(now = /* @__PURE__ */ new Date()) {
 }
 async function executeAutomation(automation, input) {
   const db = supabaseAdmin();
-  const { data: log, error: logErr } = await db.from("automation_logs").insert({
-    automation_id: automation.id,
-    // Tenancy: matches automation.account_id (NOT NULL post-017).
-    account_id: automation.account_id,
-    // Audit: keeps the historical "author of this automation"
-    // pointer so logs still attribute to the right user even
-    // after teammates join the account.
-    user_id: automation.user_id,
-    contact_id: input.contactId ?? null,
-    trigger_event: input.triggerType,
-    steps_executed: [],
-    // Seeded pessimistically. The row is written BEFORE any step runs,
-    // and every terminal path below overwrites it (`appendResults` at
-    // the outermost scope, or `finalizeLog`). Seeding 'success' meant a
-    // run that died mid-flight — the process frozen, the pod recycled —
-    // left a permanent `status: 'success'` with `steps_executed: []`,
-    // indistinguishable from an automation that genuinely had nothing
-    // to do. 'failed' inverts that: the status only becomes success if
-    // execution actually reached the end. See issue #409.
-    status: "failed"
-  }).select().single();
-  if (logErr || !log) {
-    console.error("[automations] cannot create log:", logErr);
+  const [logRes, preloadedSteps] = await Promise.all([
+    db.from("automation_logs").insert({
+      automation_id: automation.id,
+      account_id: automation.account_id,
+      user_id: automation.user_id,
+      contact_id: input.contactId ?? null,
+      trigger_event: input.triggerType,
+      steps_executed: [],
+      status: "failed"
+    }).select().single(),
+    loadAllAutomationSteps(db, automation.id)
+  ]);
+  const log = logRes.data;
+  if (logRes.error || !log) {
+    console.error("[automations] cannot create log:", logRes.error);
     return;
   }
-  const preloadedSteps = await loadAllAutomationSteps(db, automation.id);
   await executeStepsFrom({
     automation,
     contactId: input.contactId ?? null,
@@ -31560,12 +31502,13 @@ async function executeAutomation(automation, input) {
     preloadedSteps,
     verifiedConversationId: input.context?.conversation_id
   });
-  const { error: rpcErr } = await db.rpc("increment_automation_execution_count", {
+  void db.rpc("increment_automation_execution_count", {
     p_automation_id: automation.id
+  }).then(({ error: rpcErr }) => {
+    if (rpcErr) {
+      console.error("[automations] increment counter failed:", rpcErr);
+    }
   });
-  if (rpcErr) {
-    console.error("[automations] increment counter failed:", rpcErr);
-  }
 }
 async function loadAllAutomationSteps(db, automationId) {
   const { data, error } = await db.from("automation_steps").select("*").eq("automation_id", automationId).order("position", { ascending: true });
@@ -31635,6 +31578,7 @@ async function executeStepsFrom(args) {
             accountId: args.automation.account_id,
             queueName: "automations",
             jobType: "delayed_automation_step",
+            priority: 2,
             runAt: new Date(Date.now() + ms),
             payload: {
               pendingExecutionId: pendingInsert.id
@@ -32151,7 +32095,7 @@ function supabaseAdmin3() {
         "Supabase service role key is required. Set SUPABASE_SERVICE_ROLE_KEY in your environment variables."
       );
     }
-    const transport = typeof globalThis.WebSocket !== "undefined" ? globalThis.WebSocket : StubWebSocket3;
+    const transport = typeof globalThis.WebSocket !== "undefined" ? globalThis.WebSocket : StubWebSocket;
     _adminClient3 = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
         persistSession: false,
@@ -32164,50 +32108,14 @@ function supabaseAdmin3() {
   }
   return _adminClient3;
 }
-var _adminClient3, StubWebSocket3;
+var _adminClient3;
 var init_admin_client3 = __esm({
   "src/lib/ai/admin-client.ts"() {
     "use strict";
+    init_websocket_polyfill();
     init_dist4();
+    init_websocket_polyfill();
     _adminClient3 = null;
-    StubWebSocket3 = class {
-      constructor() {
-        this.CONNECTING = 0;
-        this.OPEN = 1;
-        this.CLOSING = 2;
-        this.CLOSED = 3;
-        this.readyState = 3;
-        this.url = "";
-        this.protocol = "";
-        this.onopen = null;
-        this.onmessage = null;
-        this.onclose = null;
-        this.onerror = null;
-      }
-      static {
-        this.CONNECTING = 0;
-      }
-      static {
-        this.OPEN = 1;
-      }
-      static {
-        this.CLOSING = 2;
-      }
-      static {
-        this.CLOSED = 3;
-      }
-      close() {
-      }
-      send() {
-      }
-      addEventListener() {
-      }
-      removeEventListener() {
-      }
-    };
-    if (typeof globalThis.WebSocket === "undefined") {
-      globalThis.WebSocket = StubWebSocket3;
-    }
   }
 });
 
@@ -38449,6 +38357,9 @@ var init_mirror_inbound_media = __esm({
   }
 });
 
+// src/workers/index.ts
+init_websocket_polyfill();
+
 // src/lib/queue/worker.ts
 init_admin_client();
 init_metrics();
@@ -38470,8 +38381,8 @@ var QueueWorker = class {
       "media"
     ];
     this.concurrency = Math.max(1, options.concurrency ?? 10);
-    this.pollIntervalMs = options.pollIntervalMs ?? 200;
-    this.emptyBackoffMs = options.emptyBackoffMs ?? 1500;
+    this.pollIntervalMs = options.pollIntervalMs ?? 50;
+    this.emptyBackoffMs = options.emptyBackoffMs ?? 250;
     this.lockTimeoutSeconds = options.lockTimeoutSeconds ?? 300;
     this.maxBackoffMinutes = options.maxBackoffMinutes ?? 60;
     this.customDb = options.client;
@@ -38582,9 +38493,12 @@ var QueueWorker = class {
     }
     const startTime = Date.now();
     const waitTimeMs = Math.max(0, startTime - new Date(job.run_at).getTime());
+    const queueWaitMs = job.enqueued_at ? Math.max(0, startTime - new Date(job.enqueued_at).getTime()) : waitTimeMs;
+    const e2eLatencyMs = job.webhook_received_at ? Math.max(0, startTime - new Date(job.webhook_received_at).getTime()) : void 0;
     recordMetric("queue_wait_time_ms", waitTimeMs, "ms", {
       job_type: job.job_type,
       queue: job.queue_name,
+      priority: job.priority ?? 3,
       account_id: job.account_id ?? "system"
     });
     recordMetric("worker_concurrency_active", this.activeJobsCount, "count", {
@@ -38593,12 +38507,17 @@ var QueueWorker = class {
     try {
       await handler(job);
       const durationMs = Date.now() - startTime;
+      const timings = {
+        queue_wait_ms: queueWaitMs,
+        exec_ms: durationMs,
+        ...e2eLatencyMs ? { e2e_latency_ms: e2eLatencyMs + durationMs } : {}
+      };
       recordMetric("job_processing_time_ms", durationMs, "ms", {
         job_type: job.job_type,
         status: "completed",
         account_id: job.account_id ?? "system"
       });
-      await this.settle(job.id, "completed");
+      await this.settle(job.id, "completed", void 0, timings);
     } catch (err) {
       const durationMs = Date.now() - startTime;
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -38649,44 +38568,6 @@ var QueueWorker = class {
 };
 
 // src/workers/index.ts
-if (typeof globalThis.WebSocket === "undefined") {
-  class StubWebSocket4 {
-    constructor() {
-      this.CONNECTING = 0;
-      this.OPEN = 1;
-      this.CLOSING = 2;
-      this.CLOSED = 3;
-      this.readyState = 3;
-      this.url = "";
-      this.protocol = "";
-      this.onopen = null;
-      this.onmessage = null;
-      this.onclose = null;
-      this.onerror = null;
-    }
-    static {
-      this.CONNECTING = 0;
-    }
-    static {
-      this.OPEN = 1;
-    }
-    static {
-      this.CLOSING = 2;
-    }
-    static {
-      this.CLOSED = 3;
-    }
-    close() {
-    }
-    send() {
-    }
-    addEventListener() {
-    }
-    removeEventListener() {
-    }
-  }
-  globalThis.WebSocket = StubWebSocket4;
-}
 var loadEnv = process.loadEnvFile;
 if (typeof loadEnv === "function") {
   for (const envFile of [".env.local", ".env"]) {
@@ -38697,171 +38578,215 @@ if (typeof loadEnv === "function") {
     }
   }
 }
-var concurrency = process.env.WORKER_CONCURRENCY ? parseInt(process.env.WORKER_CONCURRENCY, 10) : 15;
-var pollIntervalMs = process.env.WORKER_POLL_INTERVAL_MS ? parseInt(process.env.WORKER_POLL_INTERVAL_MS, 10) : 200;
-var emptyBackoffMs = process.env.WORKER_EMPTY_BACKOFF_MS ? parseInt(process.env.WORKER_EMPTY_BACKOFF_MS, 10) : 1e3;
-var worker = new QueueWorker({
-  workerId: `wacrm-worker-${process.pid}`,
-  concurrency: isNaN(concurrency) ? 15 : concurrency,
-  pollIntervalMs: isNaN(pollIntervalMs) ? 200 : pollIntervalMs,
-  emptyBackoffMs: isNaN(emptyBackoffMs) ? 1e3 : emptyBackoffMs
-});
-worker.registerHandler("outbound_message", async (job) => {
-  const { sendMessageToConversation: sendMessageToConversation2 } = await Promise.resolve().then(() => (init_send_message(), send_message_exports));
-  const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
-  const db = supabaseAdmin4();
-  const payload = job.payload;
-  await sendMessageToConversation2(db, payload.accountId, {
-    conversationId: payload.conversationId,
-    messageType: payload.messageType,
-    contentText: payload.contentText,
-    mediaUrl: payload.mediaUrl,
-    filename: payload.filename,
-    templateName: payload.templateName,
-    templateLanguage: payload.templateLanguage,
-    templateParams: payload.templateParams,
-    templateMessageParams: payload.templateMessageParams,
-    interactivePayload: payload.interactivePayload,
-    replyToMessageId: payload.replyToMessageId
+function registerAllHandlers(w) {
+  w.registerHandler("outbound_message", async (job) => {
+    const { sendMessageToConversation: sendMessageToConversation2 } = await Promise.resolve().then(() => (init_send_message(), send_message_exports));
+    const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
+    const db = supabaseAdmin4();
+    const payload = job.payload;
+    await sendMessageToConversation2(db, payload.accountId, {
+      conversationId: payload.conversationId,
+      messageType: payload.messageType,
+      contentText: payload.contentText,
+      mediaUrl: payload.mediaUrl,
+      filename: payload.filename,
+      templateName: payload.templateName,
+      templateLanguage: payload.templateLanguage,
+      templateParams: payload.templateParams,
+      templateMessageParams: payload.templateMessageParams,
+      interactivePayload: payload.interactivePayload,
+      replyToMessageId: payload.replyToMessageId
+    });
   });
-});
-worker.registerHandler("broadcast_recipient", async (job) => {
-  const { sendTemplateMessage: sendTemplateMessage2 } = await Promise.resolve().then(() => (init_meta_api(), meta_api_exports));
-  const { decrypt: decrypt2 } = await Promise.resolve().then(() => (init_encryption(), encryption_exports));
-  const { resolveTemplateRow: resolveTemplateRow2 } = await Promise.resolve().then(() => (init_template_body(), template_body_exports));
-  const { phoneVariants: phoneVariants2, isRecipientNotAllowedError: isRecipientNotAllowedError2 } = await Promise.resolve().then(() => (init_phone_utils(), phone_utils_exports));
-  const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
-  const db = supabaseAdmin4();
-  const payload = job.payload;
-  let { data: config, error: configErr } = await db.from("whatsapp_config").select("*").eq("account_id", payload.accountId).maybeSingle();
-  if (!config) {
-    const { data: fallback } = await db.from("whatsapp_config").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
-    if (fallback) {
-      console.warn("[queue-worker] Falling back to primary whatsapp_config row for account:", payload.accountId);
-      config = fallback;
+  w.registerHandler("broadcast_recipient", async (job) => {
+    const { sendTemplateMessage: sendTemplateMessage2 } = await Promise.resolve().then(() => (init_meta_api(), meta_api_exports));
+    const { getCachedWhatsAppConfig: getCachedWhatsAppConfig2 } = await Promise.resolve().then(() => (init_config_cache(), config_cache_exports));
+    const { resolveTemplateRow: resolveTemplateRow2 } = await Promise.resolve().then(() => (init_template_body(), template_body_exports));
+    const { phoneVariants: phoneVariants2, isRecipientNotAllowedError: isRecipientNotAllowedError2 } = await Promise.resolve().then(() => (init_phone_utils(), phone_utils_exports));
+    const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
+    const db = supabaseAdmin4();
+    const payload = job.payload;
+    const config = await getCachedWhatsAppConfig2(db, payload.accountId);
+    if (!config) {
+      throw new Error(`WhatsApp not configured for account ${payload.accountId}`);
     }
-  }
-  if (configErr || !config) {
-    throw new Error(`WhatsApp not configured for account ${payload.accountId}`);
-  }
-  const accessToken = decrypt2(config.access_token);
-  const resolvedTemplate = await resolveTemplateRow2(
-    db,
-    payload.accountId,
-    payload.templateName,
-    payload.templateLanguage
-  );
-  const variants = phoneVariants2(payload.phone);
-  let sentMessageId = null;
-  let lastError = null;
-  for (const variant of variants) {
-    try {
-      const result = await sendTemplateMessage2({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
-        to: variant,
-        templateName: payload.templateName,
-        language: resolvedTemplate.language,
-        template: resolvedTemplate.row ?? void 0,
-        messageParams: payload.messageParams,
-        params: payload.params
-      });
-      sentMessageId = result.messageId;
-      lastError = null;
-      break;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      lastError = msg;
-      if (!isRecipientNotAllowedError2(msg)) break;
+    const accessToken = config.accessToken;
+    const resolvedTemplate = await resolveTemplateRow2(
+      db,
+      payload.accountId,
+      payload.templateName,
+      payload.templateLanguage
+    );
+    const variants = phoneVariants2(payload.phone);
+    let sentMessageId = null;
+    let lastError = null;
+    for (const variant of variants) {
+      try {
+        const result = await sendTemplateMessage2({
+          phoneNumberId: config.phoneNumberId,
+          accessToken,
+          to: variant,
+          templateName: payload.templateName,
+          language: resolvedTemplate.language,
+          template: resolvedTemplate.row ?? void 0,
+          messageParams: payload.messageParams,
+          params: payload.params
+        });
+        sentMessageId = result.messageId;
+        lastError = null;
+        break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        lastError = msg;
+        if (!isRecipientNotAllowedError2(msg)) break;
+      }
     }
-  }
-  if (sentMessageId) {
-    await db.from("broadcast_recipients").update({
-      status: "sent",
-      sent_at: (/* @__PURE__ */ new Date()).toISOString(),
-      whatsapp_message_id: sentMessageId,
-      error_message: null
-    }).eq("id", payload.recipientRowId);
-  } else {
-    await db.from("broadcast_recipients").update({
-      status: "failed",
-      error_message: lastError || "Meta delivery error"
-    }).eq("id", payload.recipientRowId);
-    throw new Error(lastError || "Failed to deliver broadcast message");
-  }
-});
-worker.registerHandler("automation_trigger", async (job) => {
-  const { runAutomationsForTrigger: runAutomationsForTrigger2 } = await Promise.resolve().then(() => (init_engine(), engine_exports));
-  await runAutomationsForTrigger2({
-    accountId: job.payload.accountId,
-    triggerType: job.payload.triggerType,
-    contactId: job.payload.contactId,
-    context: job.payload.context
+    if (sentMessageId) {
+      await db.from("broadcast_recipients").update({
+        status: "sent",
+        sent_at: (/* @__PURE__ */ new Date()).toISOString(),
+        whatsapp_message_id: sentMessageId,
+        error_message: null
+      }).eq("id", payload.recipientRowId);
+    } else {
+      await db.from("broadcast_recipients").update({
+        status: "failed",
+        error_message: lastError || "Meta delivery error"
+      }).eq("id", payload.recipientRowId);
+      throw new Error(lastError || "Failed to deliver broadcast message");
+    }
   });
-});
-worker.registerHandler("delayed_automation_step", async (job) => {
-  const { resumePendingExecution: resumePendingExecution2 } = await Promise.resolve().then(() => (init_engine(), engine_exports));
-  const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
-  const db = supabaseAdmin4();
-  const { data: pending, error } = await db.from("automation_pending_executions").select("*").eq("id", job.payload.pendingExecutionId).single();
-  if (error || !pending) {
-    throw new Error(`Pending execution ${job.payload.pendingExecutionId} not found`);
-  }
-  await resumePendingExecution2({
-    id: pending.id,
-    automation_id: pending.automation_id,
-    account_id: pending.account_id,
-    user_id: pending.user_id,
-    contact_id: pending.contact_id,
-    log_id: pending.log_id,
-    parent_step_id: pending.parent_step_id,
-    branch: pending.branch,
-    next_step_position: pending.next_step_position,
-    context: pending.context ?? {}
+  w.registerHandler("automation_trigger", async (job) => {
+    const { runAutomationsForTrigger: runAutomationsForTrigger2 } = await Promise.resolve().then(() => (init_engine(), engine_exports));
+    await runAutomationsForTrigger2({
+      accountId: job.payload.accountId,
+      triggerType: job.payload.triggerType,
+      contactId: job.payload.contactId,
+      context: job.payload.context
+    });
   });
-});
-worker.registerHandler("webhook_event", async (job) => {
-  const { processRawWebhookPayload: processRawWebhookPayload2 } = await Promise.resolve().then(() => (init_webhook_processor(), webhook_processor_exports));
-  await processRawWebhookPayload2(job.payload.rawBody);
-});
-worker.registerHandler("ai_auto_reply", async (job) => {
-  const { dispatchInboundToAiReply: dispatchInboundToAiReply2 } = await Promise.resolve().then(() => (init_auto_reply(), auto_reply_exports));
-  await dispatchInboundToAiReply2({
-    accountId: job.payload.accountId,
-    conversationId: job.payload.conversationId,
-    contactId: job.payload.contactId,
-    configOwnerUserId: job.payload.userId ?? "",
-    inboundMessageId: job.payload.inboundMessageId
+  w.registerHandler("delayed_automation_step", async (job) => {
+    const { resumePendingExecution: resumePendingExecution2 } = await Promise.resolve().then(() => (init_engine(), engine_exports));
+    const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
+    const db = supabaseAdmin4();
+    const { data: pending, error } = await db.from("automation_pending_executions").select("*").eq("id", job.payload.pendingExecutionId).single();
+    if (error || !pending) {
+      throw new Error(`Pending execution ${job.payload.pendingExecutionId} not found`);
+    }
+    await resumePendingExecution2({
+      id: pending.id,
+      automation_id: pending.automation_id,
+      account_id: pending.account_id,
+      user_id: pending.user_id,
+      contact_id: pending.contact_id,
+      log_id: pending.log_id,
+      parent_step_id: pending.parent_step_id,
+      branch: pending.branch,
+      next_step_position: pending.next_step_position,
+      context: pending.context ?? {}
+    });
   });
-});
-worker.registerHandler("media_mirror", async (job) => {
-  const { mirrorInboundMedia: mirrorInboundMedia2 } = await Promise.resolve().then(() => (init_mirror_inbound_media(), mirror_inbound_media_exports));
-  const { decrypt: decrypt2 } = await Promise.resolve().then(() => (init_encryption(), encryption_exports));
-  const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
-  const db = supabaseAdmin4();
-  const payload = job.payload;
-  let { data: config } = await db.from("whatsapp_config").select("access_token").eq("account_id", payload.accountId).maybeSingle();
-  if (!config) {
-    const { data: fallback } = await db.from("whatsapp_config").select("access_token").order("updated_at", { ascending: false }).limit(1).maybeSingle();
-    if (fallback) config = fallback;
-  }
-  if (!config) return;
-  const accessToken = decrypt2(config.access_token);
-  const mirroredUrl = await mirrorInboundMedia2({
-    storage: db.storage,
-    accountId: payload.accountId,
-    mediaId: payload.mediaId,
-    downloadUrl: payload.downloadUrl,
-    accessToken,
-    mimeType: payload.mimeType,
-    fileSize: payload.fileSize,
-    fileName: payload.fileName,
-    messageTimestamp: payload.messageTimestamp
+  w.registerHandler("webhook_event", async (job) => {
+    const { processRawWebhookPayload: processRawWebhookPayload2 } = await Promise.resolve().then(() => (init_webhook_processor(), webhook_processor_exports));
+    await processRawWebhookPayload2(job.payload.rawBody);
   });
-  if (mirroredUrl && payload.messageId) {
-    await db.from("messages").update({ media_url: mirroredUrl }).eq("id", payload.messageId);
-  }
-});
+  w.registerHandler("ai_auto_reply", async (job) => {
+    const { dispatchInboundToAiReply: dispatchInboundToAiReply2 } = await Promise.resolve().then(() => (init_auto_reply(), auto_reply_exports));
+    await dispatchInboundToAiReply2({
+      accountId: job.payload.accountId,
+      conversationId: job.payload.conversationId,
+      contactId: job.payload.contactId,
+      configOwnerUserId: job.payload.userId ?? "",
+      inboundMessageId: job.payload.inboundMessageId
+    });
+  });
+  w.registerHandler("media_mirror", async (job) => {
+    const { mirrorInboundMedia: mirrorInboundMedia2 } = await Promise.resolve().then(() => (init_mirror_inbound_media(), mirror_inbound_media_exports));
+    const { getCachedWhatsAppConfig: getCachedWhatsAppConfig2 } = await Promise.resolve().then(() => (init_config_cache(), config_cache_exports));
+    const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
+    const db = supabaseAdmin4();
+    const payload = job.payload;
+    const config = await getCachedWhatsAppConfig2(db, payload.accountId);
+    if (!config) return;
+    const mirroredUrl = await mirrorInboundMedia2({
+      storage: db.storage,
+      accountId: payload.accountId,
+      mediaId: payload.mediaId,
+      downloadUrl: payload.downloadUrl,
+      accessToken: config.accessToken,
+      mimeType: payload.mimeType,
+      fileSize: payload.fileSize,
+      fileName: payload.fileName,
+      messageTimestamp: payload.messageTimestamp
+    });
+    if (mirroredUrl && payload.messageId) {
+      await db.from("messages").update({ media_url: mirroredUrl }).eq("id", payload.messageId);
+    }
+  });
+  return w;
+}
+var envQueues = process.env.WORKER_QUEUES ? process.env.WORKER_QUEUES.split(",").map((q) => q.trim()) : void 0;
+var customConcurrency = process.env.WORKER_CONCURRENCY ? parseInt(process.env.WORKER_CONCURRENCY, 10) : void 0;
+var workers = [];
+if (envQueues && envQueues.length > 0) {
+  const isMessageQueue = envQueues.includes("messages");
+  const w = new QueueWorker({
+    workerId: `wacrm-${envQueues.join("-")}-${process.pid}`,
+    queues: envQueues,
+    concurrency: customConcurrency ?? (isMessageQueue ? 10 : 5),
+    pollIntervalMs: isMessageQueue ? 50 : 100,
+    emptyBackoffMs: isMessageQueue ? 200 : 500
+  });
+  registerAllHandlers(w);
+  workers.push(w);
+} else {
+  const messageWorker = new QueueWorker({
+    workerId: `wacrm-messages-${process.pid}`,
+    queues: ["messages"],
+    concurrency: customConcurrency ?? 10,
+    pollIntervalMs: 50,
+    emptyBackoffMs: 200
+  });
+  registerAllHandlers(messageWorker);
+  workers.push(messageWorker);
+  const automationWorker = new QueueWorker({
+    workerId: `wacrm-automations-${process.pid}`,
+    queues: ["automations"],
+    concurrency: 5,
+    pollIntervalMs: 50,
+    emptyBackoffMs: 250
+  });
+  registerAllHandlers(automationWorker);
+  workers.push(automationWorker);
+  const aiWorker = new QueueWorker({
+    workerId: `wacrm-ai-${process.pid}`,
+    queues: ["ai"],
+    concurrency: 3,
+    pollIntervalMs: 100,
+    emptyBackoffMs: 500
+  });
+  registerAllHandlers(aiWorker);
+  workers.push(aiWorker);
+  const broadcastWorker = new QueueWorker({
+    workerId: `wacrm-broadcasts-${process.pid}`,
+    queues: ["broadcasts"],
+    concurrency: 5,
+    pollIntervalMs: 100,
+    emptyBackoffMs: 500
+  });
+  registerAllHandlers(broadcastWorker);
+  workers.push(broadcastWorker);
+  const backgroundWorker = new QueueWorker({
+    workerId: `wacrm-background-${process.pid}`,
+    queues: ["webhooks", "media"],
+    concurrency: 4,
+    pollIntervalMs: 150,
+    emptyBackoffMs: 800
+  });
+  registerAllHandlers(backgroundWorker);
+  workers.push(backgroundWorker);
+}
+var worker = workers[0];
 if (process.argv[1]?.endsWith("workers/index.ts") || process.argv[1]?.endsWith("workers/index.js") || process.argv[1]?.endsWith("worker.mjs") || process.argv[1]?.includes("worker")) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
@@ -38873,16 +38798,17 @@ if (process.argv[1]?.endsWith("workers/index.ts") || process.argv[1]?.endsWith("
   - Supabase Service Role Key (SUPABASE_SERVICE_ROLE_KEY): ${serviceRoleKey ? "OK" : "MISSING"}
   - WhatsApp Encryption Key (ENCRYPTION_KEY): ${process.env.ENCRYPTION_KEY ? "OK" : "MISSING"}
 
--> If deploying on Railway, Coolify, or Docker:
-   Ensure these variables are added to the "queue-worker" service / container.
-   (In Railway: go to Project -> "queue-worker" service -> "Variables" tab and add them)
 `
     );
   }
-  void worker.start();
+  console.log(`[queue-worker] Starting ${workers.length} active worker pools...`);
+  for (const w of workers) {
+    void w.start();
+  }
 }
 export {
-  worker
+  worker,
+  workers
 };
 /*! Bundled license information:
 

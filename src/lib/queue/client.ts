@@ -21,16 +21,25 @@ export async function enqueueJob<K extends JobType = JobType>(
       : options.runAt
     : new Date().toISOString();
 
+  const webhookReceivedAtIso = options.webhookReceivedAt
+    ? options.webhookReceivedAt instanceof Date
+      ? options.webhookReceivedAt.toISOString()
+      : options.webhookReceivedAt
+    : null;
+
   const insertData = {
     account_id: options.accountId ?? null,
     queue_name: options.queueName,
     job_type: options.jobType,
+    priority: options.priority ?? 3,
     payload: options.payload,
     status: 'pending',
     attempts: 0,
     max_attempts: options.maxAttempts ?? 5,
     run_at: runAtIso,
     idempotency_key: options.idempotencyKey ?? null,
+    webhook_received_at: webhookReceivedAtIso,
+    enqueued_at: new Date().toISOString(),
   };
 
   const { data, error } = await db
@@ -66,6 +75,7 @@ export async function enqueueJobsBatch<K extends JobType = JobType>(
     account_id: j.accountId ?? null,
     queue_name: j.queueName,
     job_type: j.jobType,
+    priority: j.priority ?? 3,
     payload: j.payload,
     status: 'pending',
     attempts: 0,
@@ -76,6 +86,12 @@ export async function enqueueJobsBatch<K extends JobType = JobType>(
         : j.runAt
       : new Date().toISOString(),
     idempotency_key: j.idempotencyKey ?? null,
+    webhook_received_at: j.webhookReceivedAt
+      ? j.webhookReceivedAt instanceof Date
+        ? j.webhookReceivedAt.toISOString()
+        : j.webhookReceivedAt
+      : null,
+    enqueued_at: new Date().toISOString(),
   }));
 
   const { data, error } = await db

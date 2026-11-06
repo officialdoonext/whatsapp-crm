@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import { getCachedWhatsAppConfig } from '@/lib/whatsapp/config-cache'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body'
 import {
@@ -123,13 +124,9 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+    const config = await getCachedWhatsAppConfig(supabase, accountId)
 
-    if (configError || !config) {
+    if (!config) {
       return NextResponse.json(
         {
           error:
@@ -139,7 +136,8 @@ export async function POST(request: Request) {
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    const accessToken = config.accessToken
+    const phoneNumberId = config.phoneNumberId
 
     // Load the template row once so sendTemplateMessage can build
     // header + button components on each iteration. Loading inside
@@ -186,7 +184,7 @@ export async function POST(request: Request) {
       for (const variant of variants) {
         try {
           const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
+            phoneNumberId,
             accessToken,
             to: variant,
             templateName: template_name,

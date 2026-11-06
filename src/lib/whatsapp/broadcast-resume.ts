@@ -21,6 +21,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { BroadcastError, type BroadcastPlan } from '@/lib/whatsapp/broadcast-core';
 import { chunk } from '@/lib/supabase/paged-query';
 import { decrypt } from '@/lib/whatsapp/encryption';
+import { getCachedWhatsAppConfig } from '@/lib/whatsapp/config-cache';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 

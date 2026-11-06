@@ -26,6 +26,7 @@ import {
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
+import { getCachedWhatsAppConfig } from '@/lib/whatsapp/config-cache';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
 import { recordMetric } from '@/lib/monitoring/metrics';
@@ -110,19 +111,15 @@ export async function createBroadcast(
 
   // Config (fail fast + provides the audit trail owner already resolved
   // by the caller). Meta send needs phone_number_id + decrypted token.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
-  if (configError || !config) {
+  const config = await getCachedWhatsAppConfig(db, accountId);
+  if (!config) {
     throw new BroadcastError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
       400
     );
   }
-  const accessToken = decrypt(config.access_token);
+  const accessToken = config.accessToken;
 
   // Template row (once) for header/button components; guard a
   // malformed local row rather than N identical opaque failures.
@@ -258,7 +255,7 @@ export async function createBroadcast(
     broadcastId,
     templateName,
     templateLanguage: resolvedTemplate.language,
-    phoneNumberId: config.phone_number_id,
+    phoneNumberId: config.phoneNumberId,
     accessToken,
     templateRow,
     planned,

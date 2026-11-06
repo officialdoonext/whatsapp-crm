@@ -1,35 +1,9 @@
+import '@/workers/websocket-polyfill'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { StubWebSocket } from '@/workers/websocket-polyfill'
 
 // Lazy, shared service-role client for the Flows engine.
-// Mirrors src/lib/automations/admin-client.ts — same shape so anyone
-// reading either file picks up the convention immediately.
 let _adminClient: SupabaseClient | null = null
-
-class StubWebSocket {
-  static readonly CONNECTING = 0
-  static readonly OPEN = 1
-  static readonly CLOSING = 2
-  static readonly CLOSED = 3
-  readonly CONNECTING = 0
-  readonly OPEN = 1
-  readonly CLOSING = 2
-  readonly CLOSED = 3
-  readonly readyState = 3
-  readonly url = ''
-  readonly protocol = ''
-  onopen = null
-  onmessage = null
-  onclose = null
-  onerror = null
-  close() {}
-  send() {}
-  addEventListener() {}
-  removeEventListener() {}
-}
-
-if (typeof globalThis.WebSocket === 'undefined') {
-  globalThis.WebSocket = StubWebSocket as unknown as typeof WebSocket
-}
 
 export function supabaseAdmin(): SupabaseClient {
   if (!_adminClient) {
