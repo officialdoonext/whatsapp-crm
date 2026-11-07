@@ -209,7 +209,9 @@
       "assignmentUpdateFailed": "담당자 변경에 실패했습니다",
       "networkError": "네트워크 오류",
       "documentFallback": "문서",
-      "you": "나"
+      "you": "나",
+      "loadOlderMessages": "이전 메시지 불러오기",
+      "loadingEarlierMessages": "이전 메시지 불러오는 중..."
     },
     "sessionTimer": {
       "expired": "만료됨",

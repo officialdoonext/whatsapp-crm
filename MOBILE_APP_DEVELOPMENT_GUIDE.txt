@@ -1,0 +1,1876 @@
+================================================================================
+       WHATSAPP CRM (WACRM) - COMPLETE MOBILE APP DEVELOPMENT SPECIFICATION     
+      100% EXHAUSTIVE SCREEN-BY-SCREEN, FIELD-BY-FIELD, PROCESS-BY-PROCESS GUIDE
+================================================================================
+Document Version: 2.0.0 (Master Developer Blueprint)
+Target Mobile Framework: React Native 0.88+ / React 19 / TypeScript 6.0 (iOS & Android)
+Backend Architecture: Supabase (PostgreSQL, Realtime WebSockets, Storage, Auth)
+Official WhatsApp API: Meta WhatsApp Business Cloud API (Graph API v21.0+)
+Web Project Repository: c:\Users\Arumulla SivaKrishna\Desktop\Doonext\whatsapp Next\wacrm-main
+Mobile App Codebase: C:\wacrm-app
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. GLOBAL ARCHITECTURE, GUARDS, PERMISSIONS & DATA CONTRACTS
+   1.1 System Roles & Privilege Matrix (owner, admin, agent, viewer)
+   1.2 Account Access & Subscription Guard System (checkUserAccess)
+   1.3 WhatsApp 24-Hour Messaging Policy Enforcement Formula
+   1.4 Multi-Tenancy Architecture (account_id Scoping & RLS)
+   1.5 Supabase Storage Upload Pipelines (chat-media, flow-media, avatars)
+   1.6 Push Notifications Architecture (FCM & APNs Inbound Delivery)
+
+2. DETAILED SCREEN-BY-SCREEN FUNCTIONALITY & DATA SPECIFICATION
+   [Each screen includes: Purpose, Functionality Checks, Data Fetching (Exact SQL),
+    Data Additions/Mutations (Payload & Steps), Field-by-Field & Option-by-Option Breakdown,
+    Realtime WebSocket Listeners, and Mobile TypeScript Implementation Pattern]
+
+   2.1 AUTHENTICATION & ONBOARDING MODULE
+       - Screen 1: Splash Screen (/splash)
+       - Screen 2: Welcome / Marketing Onboarding Screen (/welcome)
+       - Screen 3: Login Screen (/login)
+       - Screen 4: Sign Up & Workspace Registration Screen (/signup)
+       - Screen 5: Forgot Password & OTP Verification Screen (/forgot-password)
+       - Screen 6: Reset Password Screen (/reset-password)
+       - Screen 7: Onboarding & Subscription Access Guard Screen (/onboarding)
+       - Screen 8: Workspace Invitation Redemption Screen (/join/:token)
+
+   2.2 DASHBOARD & ANALYTICS MODULE
+       - Screen 9: Executive Dashboard (/dashboard)
+         * KPI Metric Cards (Conversations, Contacts, Revenue, Sent)
+         * Daily Inbound/Outbound Conversations Volume Chart
+         * Response Time Chart
+         * Sales Pipeline Donut / Funnel
+         * Live Activity Feed
+         * Quick Action Tiles
+
+   2.3 SHARED WHATSAPP INBOX & LIVE CHAT MODULE (CORE)
+       - Screen 10: Conversation List Screen (/inbox)
+         * Tab Filters, Search, Tag Chip Selector, Swipe Actions, Realtime Ticks
+       - Screen 11: 1-on-1 Message Thread Screen (/inbox/:conversationId)
+         * Header, Presence Dot, Status Dropdown, Agent Assign, AI Toggle
+         * 24-Hour Policy Warning Banner & Calculation
+         * 10 Discrete Message Bubble Types (Text, Media, Audio, Interactive, Catalog, Orders)
+         * Realtime Delivery Ticks & Failed Error Diagnostic Sheet
+         * Message Reactions Tray & Floating Emoji Badges
+         * Quoted Reply / Swipe-to-Reply Context
+       - Screen 12: Message Composer & Modals (/inbox composer)
+         * Multiline Expanding Input & Dynamic Mic/Send Button
+         * Native Attachments Action Sheet
+         * Native Voice Note Audio Recorder (Timer, Waveform, Trash, Send)
+         * Meta Message Template Picker Modal (Filter, Placeholders, Preview, Send)
+         * Quick Replies Modal (/ Shortcut Trigger & Search)
+         * WhatsApp Interactive Buttons & List Generator Modal
+         * Meta Commerce Product Catalog Picker Modal
+         * AI Copilot Draft Assistant (Draft, Rephrase, Expand, Shorten, Translate)
+       - Screen 13: Contact CRM Profile Drawer / Sheet (/inbox contact-drawer)
+         * Customer Details, WhatsApp @username & BSUID, Tag Editor, Custom Fields,
+           Linked Deals, Agent Notes Timeline, Opt-Out Block & Delete Contact
+
+   2.4 CONTACTS MANAGEMENT & CRM DIRECTORY MODULE
+       - Screen 14: Contacts Directory Screen (/contacts)
+       - Screen 15: Add / Edit Contact Modal
+       - Screen 16: CSV Contact Import Wizard (Mapping, Deduplication, Progress)
+       - Screen 17: Custom Fields Configuration Modal
+       - Screen 18: Contact Export Action
+
+   2.5 SALES PIPELINES & DEALS MODULE (KANBAN)
+       - Screen 19: Pipeline Kanban Board Screen (/pipelines)
+       - Screen 20: Add / Edit Deal Modal & Sheet
+       - Screen 21: Pipeline Settings & Stage Reordering Modal
+       - Screen 22: Pipeline Revenue Forecasting & Funnel Analytics
+
+   2.6 COMMERCE, PRODUCT CATALOG & IN-CHAT ORDERS MODULE
+       - Screen 23: Commerce Dashboard & Orders Roster Screen (/commerce)
+       - Screen 24: Synced Product Catalog Browser
+       - Screen 25: Order Details & Payment Modal (Generate & Send Payment Link)
+       - Screen 26: Commerce Settings & Payment Gateways (Razorpay, Stripe, WhatsApp Pay, UPI)
+
+   2.7 BROADCASTS & OUTBOUND CAMPAIGNS MODULE
+       - Screen 27: Broadcasts Directory Screen (/broadcasts)
+       - Screen 28: 4-Step Broadcast Creation Wizard (/broadcasts/new)
+         * Step 1: Meta Template Selection & Preview
+         * Step 2: Audience Definition (Tags, Custom Fields, CSV Upload)
+         * Step 3: Personalization Mapping & Header Media Upload
+         * Step 4: Schedule, Throttling Rate & Launch Confirmation
+       - Screen 29: Broadcast Analytics & Recipient Delivery Log Screen (/broadcasts/:id)
+
+   2.8 AUTOMATIONS & RULES ENGINE MODULE
+       - Screen 30: Automations Directory Screen (/automations)
+       - Screen 31: Automation Rule Builder (/automations/new)
+         * 8 Triggers & 13 Actions Tree Configuration with If/Else Branching
+       - Screen 32: Automation Execution History & Error Logs (/automations/:id/logs)
+
+   2.9 VISUAL FLOWS (NO-CODE CHATBOT BUILDER) MODULE
+       - Screen 33: Flows Directory Screen (/flows)
+       - Screen 34: Mobile Flow Visualizer & Node Configuration Editor (/flows/:id)
+         * All 10 Node Types (start, message, buttons, list, media, input, condition, tag, handoff, end)
+       - Screen 35: Flow Customer Trace Logs & Drop-Off Analytics
+
+   2.10 AI AGENTS & AUTOREPLY COPILOT MODULE
+       - Screen 36: AI Setup & Model Parameters (/agents?tab=setup)
+       - Screen 37: Knowledge Base Documents & FAQs Manager (/agents?tab=knowledge)
+       - Screen 38: AI Sandbox / Interactive Playground (/agents?tab=playground)
+       - Screen 39: AI Token Usage & Cost Analytics (/agents?tab=usage)
+
+   2.11 NOTIFICATIONS CENTER MODULE
+       - Screen 40: Notifications Feed Screen (/notifications)
+
+   2.12 WORKSPACE & SETTINGS SUITE MODULE
+       - Screen 41: Settings Overview Hub (/settings)
+       - Screen 42: WhatsApp Cloud API Connection Settings (/settings?tab=whatsapp)
+       - Screen 43: Meta Message Templates Manager (/settings?tab=templates)
+       - Screen 44: Quick Replies Manager (/settings?tab=quick-replies)
+       - Screen 45: Fields & Tags Settings (/settings?tab=fields)
+       - Screen 46: Deals & Currency Settings (/settings?tab=deals)
+       - Screen 47: Team Members & Role Permissions (/settings?tab=members)
+       - Screen 48: Developer API Keys (/settings?tab=api)
+       - Screen 49: User Profile Settings (/settings?tab=profile)
+       - Screen 50: Security, Active Sessions & Delete Account (/settings?tab=security)
+
+3. COMPLETE DATABASE SCHEMA & REST API REGISTRY
+   3.1 Complete 19-Table Database Schema (PostgreSQL)
+   3.2 Complete HTTP REST API Endpoint Specification
+   3.3 Realtime WebSocket Subscription Channels
+   3.4 Native Mobile Setup, Android Manifest, iOS Info.plist & Verification Checklist
+================================================================================
+
+================================================================================
+2.1 AUTHENTICATION & ONBOARDING MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 1: SPLASH SCREEN (/splash)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Initial mobile bootstrapper. Checks if a valid session exists in local storage
+   and verifies workspace subscription access before routing into the CRM or Welcome screen.
+
+2. FUNCTIONALITY CHECKS & GUARDS:
+   - Check 1 (Session Existence): Call `supabase.auth.getSession()`. If null -> route to /welcome.
+   - Check 2 (Profile & Role Hydration): If session exists, query `profiles` for `account_id` and `account_role`.
+   - Check 3 (Subscription Guard - checkUserAccess): Call `/api/account/status`.
+     * Status must be strictly "active".
+     * `expiry_date` must be present and in the future (`new Date(expiryDate) > new Date()`).
+     * If `isAllowed == false` -> route to `/onboarding` with reason.
+     * If `isAllowed == true` -> route to `/inbox`.
+
+3. DATA FETCHING SPECIFICATION:
+   - Local Session Check:
+     `const { data: { session } } = await supabase.auth.getSession()`
+   - Profile Fetch:
+     `const { data: profile } = await supabase.from("profiles").select("id, user_id, full_name, email, avatar_url, account_id, account_role, status, expiry_date").eq("user_id", session.user.id).single()`
+   - Account Access Verification API:
+     `GET /api/account/status`
+     Header: `Authorization: Bearer ${session.access_token}`
+     Response Schema: `{ isAllowed: boolean, status: string, expiryDate: string | null, reason: "inactive"|"expired"|"no_expiry"|null, email: string }`
+
+4. FIELD-BY-FIELD & OPTION-BY-OPTION UI BREAKDOWN:
+   - Brand Icon: Animated SVG WhatsApp Orbit icon.
+   - Activity Indicator: Native loading spinner (Color: Emerald #10B981).
+   - App Version Label: "v0.8.0 • WhatsApp Business Cloud CRM" (Text, 11pt, Muted).
+
+5. MOBILE TYPESCRIPT IMPLEMENTATION PATTERN:
+```typescript
+// SplashScreen.tsx
+export function SplashScreen({ navigation }: any) {
+  useEffect(() => {
+    const verifySession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) { navigation.replace("Welcome"); return; }
+        const res = await fetch(`${API_BASE_URL}/api/account/status`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const statusData = await res.json();
+        if (statusData.isAllowed) {
+          navigation.replace("Inbox");
+        } else {
+          navigation.replace("Onboarding", { reason: statusData.reason });
+        }
+      } catch (err) {
+        navigation.replace("Welcome");
+      }
+    };
+    verifySession();
+  }, []);
+  return <View style={styles.container}><ActivityIndicator color="#10b981" size="large" /></View>;
+}
+```
+
+--------------------------------------------------------------------------------
+SCREEN 2: WELCOME SCREEN (/welcome)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Onboarding landing screen introducing features of the WhatsApp CRM with direct
+   actions to sign in or create a new workspace.
+
+2. FUNCTIONALITY CHECKS & GUARDS:
+   - Safe Area Insets: Must respect top notch and bottom home indicator.
+
+3. UI SPECIFICATION & BUTTON ACTIONS:
+   - Hero Graphic: SVG Orbit graphic with WhatsApp message bubbles.
+   - Title: "Unified WhatsApp CRM" (28pt, Bold, White/Dark).
+   - Description: "Shared team inbox, no-code automations, official broadcasts, and AI copilot."
+   - Button 1: "Sign In to Account" -> Navigates to `LoginScreen`.
+   - Button 2: "Create Workspace" -> Navigates to `SignUpScreen`.
+
+--------------------------------------------------------------------------------
+SCREEN 3: LOGIN SCREEN (/login)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Authenticate team members into their assigned workspace using email and password.
+
+2. FUNCTIONALITY CHECKS & GUARDS:
+   - Check 1: Input validation: Email format regex check; Password length >= 6.
+   - Check 2: If `inviteToken` query param exists, immediately redeem invite after auth.
+   - Check 3: Check user subscription status via `/api/account/status`.
+
+3. DATA ADDITIONS & MUTATIONS (LOGIN OPERATION):
+   - Step 1: Call `supabase.auth.signInWithPassword({ email: trimmedEmail, password })`.
+   - Step 2 (Optional Invite Redemption):
+     If `inviteToken` present:
+     `POST /api/invitations/${inviteToken}/redeem`
+     Headers: `Authorization: Bearer ${session.access_token}`
+   - Step 3: Cache auth session into AsyncStorage via `@supabase/supabase-js`.
+   - Error Handling: Display banner if `error.message` returned (e.g. "Invalid login credentials", "Email not confirmed").
+
+4. FIELD-BY-FIELD & OPTION-BY-OPTION BREAKDOWN:
+   - Field 1: Work Email
+     * Type: Email Input (`keyboardType="email-address"`, `autoCapitalize="none"`, `autoCorrect={false}`)
+     * Placeholder: "name@company.com"
+     * Required: Yes. Validation: `/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/`
+   - Field 2: Password
+     * Type: Masked Secure Input (`secureTextEntry={!showPassword}`)
+     * Placeholder: "••••••••"
+     * Right Affordance: Eye / EyeOff icon button toggling `showPassword` state.
+     * Required: Yes. Min length: 6 characters.
+   - Option 1: "Remember Me"
+     * Type: Boolean Toggle / Checkbox (Default: true).
+   - Button 1: "Sign In" (Primary Green)
+     * Disabled if email or password is empty, or during `loading == true`.
+     * Shows inline spinner when authenticating.
+   - Link 1: "Forgot password?" -> Navigates to `ForgotPasswordScreen`.
+   - Link 2: "Don't have an account? Sign up" -> Navigates to `SignUpScreen`.
+
+--------------------------------------------------------------------------------
+SCREEN 4: SIGN UP & WORKSPACE REGISTRATION (/signup)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   New workspace owner registration. Creates a Supabase user and automatically triggers
+   database trigger to create the default `accounts` and `profiles` records.
+
+2. FUNCTIONALITY CHECKS & GUARDS:
+   - Password strength: Minimum 8 characters, at least 1 number, 1 uppercase letter.
+   - Confirm Password: Must match Password exactly.
+   - Email uniqueness: Checked automatically by Supabase Auth.
+
+3. DATA ADDITIONS & MUTATIONS (SIGN UP OPERATION):
+   - Call:
+     ```typescript
+     await supabase.auth.signUp({
+       email,
+       password,
+       options: {
+         data: {
+           full_name: fullName.trim(),
+           company_name: workspaceName.trim(),
+         },
+       },
+     });
+     ```
+   - Success Result: Shows alert: "Check your email to verify account", then routes to `/onboarding`.
+
+4. FIELD-BY-FIELD & OPTION-BY-OPTION BREAKDOWN:
+   - Field 1: Full Name (Text, required, min 2 chars).
+   - Field 2: Work Email (Email input, required).
+   - Field 3: Password (Secure text, 8+ chars).
+   - Field 4: Confirm Password (Secure text, match check).
+   - Field 5: Workspace / Company Name (Text, required).
+   - Button: "Create Account & Workspace" (Primary Green).
+
+--------------------------------------------------------------------------------
+SCREEN 5: FORGOT PASSWORD & OTP VERIFICATION (/forgot-password)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Two-step password reset flow using a 6-digit one-time verification code (OTP).
+
+2. STEP 1 - REQUEST CODE:
+   - Field: Email input.
+   - Action: "Send 6-Digit Code" button.
+   - Mutation:
+     `POST /api/auth/forgot-password/send-code`
+     Payload: `{ email: email.trim() }`
+     Response: `{ ok: true, message: "Code sent" }`
+   - On Success: Advances UI state to Step 2.
+
+3. STEP 2 - VERIFY CODE & SET NEW PASSWORD:
+   - Field 1: 6-Digit Code Input (`keyboardType="number-pad"`, maxLength={6}).
+   - Field 2: New Password (Secure text, min 8 chars).
+   - Field 3: Confirm New Password.
+   - Action: "Verify & Reset Password" button.
+   - Mutation:
+     `POST /api/auth/forgot-password/verify-and-reset`
+     Payload: `{ email, code, password }`
+     Response: `{ ok: true, message: "Password updated successfully" }`
+   - On Success: Toast notification and routes to `LoginScreen`.
+   - Action: "Resend Code" (with 60-second cooldown timer).
+
+--------------------------------------------------------------------------------
+SCREEN 6: RESET PASSWORD SCREEN (/reset-password)
+--------------------------------------------------------------------------------
+1. PURPOSE:
+   Handles deep links from password reset recovery links with PKCE tokens.
+2. DATA MUTATION:
+   `await supabase.auth.updateUser({ password: newPassword })`
+   Redirects to `/login` upon success.
+
+--------------------------------------------------------------------------------
+SCREEN 7: ONBOARDING & SUBSCRIPTION ACCESS SCREEN (/onboarding)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Access gate for accounts requiring subscription approval or trial extension.
+2. FUNCTIONALITY CHECKS & REASONS:
+   - Reason `inactive`: Account created but not approved yet by admin.
+   - Reason `expired`: Trial or subscription period expired.
+   - Reason `no_expiry`: Expiration date not set in database.
+3. INTERACTIVE ACTIONS & PROCESSES:
+   - "Call Admin": Launches native phone dialer: `Linking.openURL("tel:8143538314")`.
+   - "WhatsApp Admin": Opens native WhatsApp with pre-filled message:
+     `Linking.openURL("https://wa.me/918143538314?text=request%20forenable%20CRM%20whats%20app%20automation%20for%20account:%20" + encodeURIComponent(email))`
+   - "Recheck Status": Re-fetches `/api/account/status`. If `isAllowed == true`, routes to `/inbox`.
+   - "Sign Out": Calls `supabase.auth.signOut()` and returns to `/login`.
+
+--------------------------------------------------------------------------------
+SCREEN 8: INVITATION REDEMPTION SCREEN (/join/:token)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Allows invited team members to accept an invitation to join an existing workspace.
+2. DATA FETCHING (PEEK INVITE):
+   `GET /api/invitations/${token}/peek`
+   Response: `{ ok: true, account_name: string, inviter_name: string, role: "admin"|"agent"|"viewer" }`
+3. DATA MUTATION (REDEEM INVITE):
+   `POST /api/invitations/${token}/redeem`
+   Headers: `Authorization: Bearer ${session.access_token}`
+   Response: `{ ok: true, account_id: string }`
+   On Success: Refreshes active user profile and redirects to `/inbox`.
+
+================================================================================
+2.2 DASHBOARD & ANALYTICS MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 9: EXECUTIVE DASHBOARD (/dashboard)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Executive overview screen providing realtime visibility into customer conversation volume,
+   sales pipeline value, agent response times, and recent workspace activity.
+
+2. FUNCTIONALITY CHECKS & GUARDS:
+   - Role Guard: Accessible to all roles (`viewer`, `agent`, `admin`, `owner`).
+   - Pull-to-Refresh: Refetches all 5 analytical datasets in parallel via `Promise.all`.
+
+3. DATA FETCHING SPECIFICATION (EXACT SQL / SUPABASE QUERIES):
+   A. KPI Metrics Bundle (`loadMetrics`):
+      ```typescript
+      // 1. Open Conversations Count:
+      supabase.from("conversations").select("id", { count: "exact", head: true }).eq("status", "open");
+
+      // 2. New Conversations Today:
+      supabase.from("conversations").select("id", { count: "exact", head: true }).gte("created_at", todayStart);
+
+      // 3. New Contacts Today:
+      supabase.from("contacts").select("id", { count: "exact", head: true }).gte("created_at", todayStart);
+
+      // 4. Open Sales Deals Total Value:
+      supabase.from("deals").select("value").eq("status", "open");
+      // Aggregation: sum of deal.value formatted with workspace currency
+
+      // 5. Total Messages Sent Today:
+      supabase.from("messages").select("id", { count: "exact", head: true }).in("sender_type", ["agent", "bot"]).gte("created_at", todayStart);
+      ```
+
+   B. Daily Conversation Volume Chart (`loadConversationsSeries`):
+      - Fetches inbound and outbound message counts for the past 7 days:
+      ```typescript
+      supabase.from("messages").select("created_at, sender_type").gte("created_at", sevenDaysAgoStart);
+      // Grouped into days: Mon, Tue, Wed, Thu, Fri, Sat, Sun
+      // Series: Inbound (sender_type == "customer") vs Outbound (sender_type in ["agent", "bot"])
+      ```
+
+   C. Agent Response Time Metric (`loadResponseTime`):
+      - Analyzes time elapsed between customer inbound message and subsequent agent reply.
+      - Buckets: < 5 mins, 5-15 mins, 15-60 mins, > 1 hour.
+
+   D. Pipeline Stage Distribution Donut (`loadPipelineDonut`):
+      ```typescript
+      // Queries stages and deals:
+      supabase.from("pipeline_stages").select("id, name, color, position").order("position");
+      supabase.from("deals").select("stage_id, value").eq("status", "open");
+      // Groups open deal count and summed value by stage.id
+      ```
+
+   E. Live Activity Feed (`loadActivity`):
+      ```typescript
+      // Fetches recent broadcasts, inbound customer messages, and deal movements:
+      supabase.from("broadcasts").select("id, name, status, created_at").order("created_at", { ascending: false }).limit(5);
+      supabase.from("messages").select("id, conversation_id, content_text, created_at, sender_type").eq("sender_type", "customer").order("created_at", { ascending: false }).limit(5);
+      supabase.from("deals").select("id, title, value, status, created_at").order("created_at", { ascending: false }).limit(5);
+      ```
+
+4. FIELD-BY-FIELD & OPTION-BY-OPTION UI BREAKDOWN:
+   - Timeframe Selector:
+     * Segmented Control: "Last 7 Days" | "Last 30 Days" | "All Time".
+   - Metric Card 1: Total Open Conversations:
+     * Value: Number (e.g., "142"). Badge: "+12% today" (Green pill). Icon: MessageSquare.
+   - Metric Card 2: New Contacts:
+     * Value: Number (e.g., "38"). Subtitle: "Unique WhatsApp leads". Icon: UserPlus.
+   - Metric Card 3: Pipeline Value:
+     * Value: Formatted Currency (e.g., "$84,500"). Subtitle: "Across 24 open deals". Icon: DollarSign.
+   - Metric Card 4: Messages Dispatched:
+     * Value: Number (e.g., "1,290"). Subtitle: "Agent & Bot sends". Icon: Send.
+   - 4 Quick Action Grid Tiles:
+     1. "New Message" -> Opens Contact selector to launch chat.
+     2. "New Broadcast" -> Opens 4-Step Broadcast Wizard.
+     3. "Add Contact" -> Opens Add Contact Modal.
+     4. "Add Deal" -> Opens Deal Creation Sheet.
+
+5. REALTIME LISTENERS:
+   - Listens to `messages` INSERT to increment "Messages Today" counter live.
+   - Listens to `conversations` INSERT to increment "New Conversations Today".
+
+================================================================================
+2.3 SHARED WHATSAPP INBOX & LIVE CHAT MODULE (CORE ENGINE)
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 10: CONVERSATION LIST SCREEN (/inbox)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Multi-agent real-time feed of all incoming and outgoing WhatsApp customer threads.
+   Allows agents to filter by assignment, unread state, lifecycle status, and contact tags.
+
+2. FUNCTIONALITY CHECKS & GUARDS:
+   - Role Guard: Accessible to all roles. Viewers see conversations read-only.
+   - Unread Badge Counter: Sum of `unread_count` across all threads.
+   - Optimistic Updates: When an agent marks a thread as resolved, the UI updates instantly.
+
+3. DATA FETCHING SPECIFICATION:
+   - Query Definition:
+     ```typescript
+     const { data, error } = await supabase
+       .from("conversations")
+       .select("*, contact:contacts(*, contact_tags(tags(*)))")
+       .order("last_message_at", { ascending: false, nullsFirst: false })
+       .limit(50);
+     ```
+   - Normalization Step:
+     Flatten embedded `contact_tags(tags(*))` into clean array `contact.tags: Tag[]`.
+   - Client-Side Filter Logic:
+     * Tab "Mine": `conv.assigned_agent_id === currentUser.id`
+     * Tab "Unread": `conv.unread_count > 0`
+     * Tab "Open": `conv.status === "open"`
+     * Tab "Pending": `conv.status === "pending"`
+     * Tab "Closed": `conv.status === "closed"`
+     * Tag Filter: `conv.contact.tags.some(t => selectedTagIds.includes(t.id))`
+     * Search Filter: Matches contact name, phone, `@username`, or `last_message_text`.
+
+4. FIELD-BY-FIELD & OPTION-BY-OPTION BREAKDOWN:
+   - Tab Filter Bar: Horizontal segmented scroll: "All" | "Mine" | "Unread" | "Open" | "Pending" | "Closed".
+   - Search Input:
+     * Placeholder: "Search conversations or contacts..."
+     * Clear button (X) when query is active.
+   - Tag Filter Chips Dropdown: Displays list of active account tags with color dots. Multiple tags can be selected.
+   - Conversation List Row:
+     * Avatar: Image if `contact.avatar_url` exists, else contact initials.
+     * Presence Dot: Green badge if contact is online/typing.
+     * Title: `contact.name || contact.phone`
+     * Time: Formatted relative timestamp (`formatDistanceToNow`).
+     * Snippet Line:
+       - Status Tick Icon: Sent ✓, Delivered ✓✓, Read ✓✓ (Blue), Failed ! (Red).
+       - Message Preview: Truncated text or `[Photo]`, `[Video]`, `[Audio]`, `[Order #...]`.
+     * Badges:
+       - Sparkles Icon: Purple badge if `ai_generated == true` on last message.
+       - 24h Expiry Dot: Amber indicator if 24h window is expiring in < 2 hours.
+       - Unread Pill: Bold green circle with count (e.g. "3").
+       - Tag Badges: Colored pills for tags.
+       - Assigned Agent Initials chip.
+   - Swipe Actions:
+     * Swipe Right: "Resolve" -> `supabase.from("conversations").update({ status: "closed" }).eq("id", conv.id)`
+     * Swipe Left: "Assign" -> Opens agent picker modal.
+
+5. REALTIME WEBSOCKET SUBSCRIPTION:
+   - Table: `conversations` (UPDATE, INSERT)
+   - Table: `messages` (INSERT -> updates last message and unread count live).
+
+--------------------------------------------------------------------------------
+SCREEN 11: MESSAGE THREAD SCREEN (/inbox/:conversationId)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   1-on-1 live chat interface with customer. Displays rich message bubbles, delivery statuses,
+   reactions, quoted replies, and handles the Meta 24-hour messaging window rule.
+   MANDATORY PERFORMANCE RULE: Never fetch all messages at once! Initial fetch retrieves ONLY
+   the latest 24 messages. On scrolling to the top, it dynamically fetches the next 24 older messages.
+
+2. FUNCTIONALITY CHECKS & GUARDS:
+   - Check 1 (24-Hour Policy Window Calculation):
+     ```typescript
+     // Find the most recent inbound message from customer:
+     const lastCustomerMsg = messages.filter(m => m.sender_type === "customer").pop();
+     const isExpired = lastCustomerMsg
+       ? (Date.now() - new Date(lastCustomerMsg.created_at).getTime()) > 24 * 60 * 60 * 1000
+       : true;
+     ```
+     * If `isExpired == true`: Lock composer text input. Show amber warning banner:
+       "24-Hour WhatsApp messaging window is closed. Only Meta-approved templates can be sent."
+       Provide "Send Template" button opening the Template Picker.
+   - Check 2 (Role Check): Viewers (`account_role === "viewer"`) cannot send messages.
+   - Check 3 (Pagination State Guards):
+     * `hasMoreOlder: boolean` (Set to false when query returns fewer than 24 rows).
+     * `isLoadingOlder: boolean` (Prevents duplicate parallel requests while scrolling up).
+
+3. DATA FETCHING SPECIFICATION: 24-MESSAGE CHUNKED PAGINATION ENGINE:
+   A. INITIAL LOAD - LATEST 24 MESSAGES ONLY:
+      ```typescript
+      const PAGE_SIZE = 24;
+
+      async function fetchLatest24Messages(conversationId: string) {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("*, reactions:message_reactions(*)")
+          .eq("conversation_id", conversationId)
+          .order("created_at", { ascending: false }) // NEWEST FIRST
+          .limit(PAGE_SIZE);
+
+        if (error) throw error;
+
+        // Determine if more historical messages exist
+        setHasMoreOlder(data.length === PAGE_SIZE);
+
+        // Reverse into chronological order (oldest -> newest) for display
+        const chronological = [...data].reverse();
+        setMessages(chronological);
+
+        // Scroll to bottom immediately upon rendering initial 24
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: false });
+        }, 50);
+      }
+      ```
+
+   B. SCROLL TO TOP - LOAD NEXT 24 OLDER MESSAGES:
+      Triggered when the user scrolls to the top of the chat (e.g. `onScroll` offset <= 20 or pull-to-refresh).
+      ```typescript
+      async function loadOlder24Messages() {
+        if (!hasMoreOlder || isLoadingOlder || messages.length === 0) return;
+
+        setIsLoadingOlder(true);
+        const oldestLoadedMessage = messages[0]; // Top-most message currently displayed
+
+        try {
+          const { data, error } = await supabase
+            .from("messages")
+            .select("*, reactions:message_reactions(*)")
+            .eq("conversation_id", conversationId)
+            .lt("created_at", oldestLoadedMessage.created_at) // CURSOR: Strictly older
+            .order("created_at", { ascending: false }) // NEWEST OF OLDER CHUNK
+            .limit(PAGE_SIZE);
+
+          if (error) throw error;
+
+          if (data) {
+            if (data.length < PAGE_SIZE) {
+              setHasMoreOlder(false); // Reached beginning of chat history
+            }
+
+            // Reverse older slice into chronological order
+            const olderChronological = [...data].reverse();
+
+            // Prepend older 24 messages to current list:
+            setMessages(prevMessages => [...olderChronological, ...prevMessages]);
+          }
+        } catch (err) {
+          console.warn("Error loading older messages:", err);
+        } finally {
+          setIsLoadingOlder(false);
+        }
+      }
+      ```
+
+   C. SCROLL VIEW HOOKUP & TOP DETECTION:
+      ```tsx
+      <ScrollView
+        ref={scrollViewRef}
+        onScroll={({ nativeEvent }) => {
+          // Detect when user scrolled to top (contentOffset.y <= 15)
+          if (nativeEvent.contentOffset.y <= 15 && hasMoreOlder && !isLoadingOlder) {
+            loadOlder24Messages();
+          }
+        }}
+        scrollEventThrottle={32}
+        refreshControl={
+          hasMoreOlder ? (
+            <RefreshControl
+              refreshing={isLoadingOlder}
+              onRefresh={loadOlder24Messages}
+              tintColor="#10B981"
+              title="Loading older messages..."
+            />
+          ) : undefined
+        }>
+        {isLoadingOlder && (
+          <View style={{ paddingVertical: 10, alignItems: "center" }}>
+            <ActivityIndicator size="small" color="#10B981" />
+            <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>Loading earlier messages...</Text>
+          </View>
+        )}
+        {messages.map(item => <MessageBubble key={item.id} message={item} />)}
+      </ScrollView>
+      ```
+
+   D. REALTIME LIVE INCOMING MESSAGE (APPENDS TO BOTTOM):
+      When a new WhatsApp message arrives in real-time, it is appended to the bottom:
+      ```typescript
+      supabase
+        .channel(`messages:${conversationId}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+          const newMsg = payload.new;
+          setMessages(prev => {
+            // Deduplicate if already optimistic
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+          // Scroll smoothly to bottom
+          setTimeout(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+          }, 60);
+        })
+        .subscribe();
+      ```
+
+   - Mark Conversation as Read:
+     ```typescript
+     await supabase
+       .from("conversations")
+       .update({ unread_count: 0 })
+       .eq("id", conversationId);
+     ```
+
+4. 10 DISCRETE MESSAGE BUBBLE TYPES & PAYLOAD STRUCTURES:
+   1. `text`: `content_text` rendered with WhatsApp Markdown (*bold*, _italic_, ~strike~, code). URLs clickable.
+   2. `image`: `media_url` displayed as full-width rounded image. Tap opens full-screen pinch-to-zoom Lightbox. Caption below.
+   3. `video`: `media_url` video thumbnail with Play overlay and duration label. Tap streams native fullscreen player.
+   4. `audio`: Native audio player widget with Play/Pause, dynamic waveform, scrubber slider, and speed toggle (1x, 1.5x, 2x).
+   5. `document`: Document format icon (PDF/DOCX/XLSX), filename, file size, and tap-to-open download button.
+   6. `location`: Map preview thumbnail showing latitude/longitude with "Open in Maps" action.
+   7. `interactive` (Buttons): Header, body, footer, plus 1 to 3 full-width button rows. Tapped button highlighted.
+   8. `interactive` (List): Header, body, "View Menu" button opening modal sheet with sectioned radio items.
+   9. `order` (Commerce): Order Reference ID, items table (thumbnail, title, qty, unit price), totals, and "View Order" CTA.
+   10. `template`: Official Meta template with populated variables `{{1}}`, `{{2}}`, header media, footer, and CTA buttons.
+
+5. REALTIME DELIVERY TICKS & FAILURE DIAGNOSTIC:
+   - Ticks on outbound bubbles: Clock (sending) -> Single Gray (sent) -> Double Gray (delivered) -> Double Blue (read) -> Red ! (failed).
+   - Diagnostic Sheet (On tapping Red !):
+     Displays `error_code` (e.g. 131026), `error_title`, `error_details` with "Retry Send" button.
+
+6. MESSAGE REACTIONS TRAY:
+   - Long press on message bubble triggers floating bar with 6 quick emojis: ❤️, 👍, 👏, 😂, 😮, 😢, and (+).
+   - Action: `POST /api/whatsapp/react` with `{ messageId, emoji }`.
+   - Reaction Badges: Overlaps bottom edge of bubble showing emoji and counter.
+
+7. SWIPE-TO-REPLY / QUOTED REPLIES:
+   - Swipe bubble right -> Haptic trigger -> Displays preview bar above composer.
+   - Outbound payload includes `replyToId: message.id`.
+
+--------------------------------------------------------------------------------
+SCREEN 12: MESSAGE COMPOSER & ATTACHMENT MODALS
+--------------------------------------------------------------------------------
+1. COMPOSER BAR ELEMENTS:
+   - Multiline Text Input: Auto-expands 1 to 5 lines.
+   - Plus Icon (+): Opens Attachments Action Sheet.
+   - Emoji Icon: Opens emoji keyboard.
+   - Lightning Icon: Opens Quick Replies modal.
+   - Template Icon: Opens Meta Template picker.
+   - Sparkles Icon: Opens AI Copilot assistant.
+   - Dynamic Right Button:
+     * If text is empty -> Microphone Icon (Voice note recorder).
+     * If text has characters -> Paper Plane Icon (Send text message).
+
+2. ATTACHMENTS ACTION SHEET:
+   - "Take Photo / Video" -> Native Camera.
+   - "Photo & Video Library" -> Native Image Picker.
+   - "Document" -> Native Document Picker (PDF, DOCX, XLSX).
+   - "Product Catalog" -> Opens Meta Commerce Catalog modal.
+   - "Interactive Message" -> Opens Buttons/List builder.
+
+3. NATIVE VOICE NOTE RECORDER:
+   - Press & hold or tap mic button -> Starts audio capture via `react-native-audio-recorder-player`.
+   - UI switches to Voice Recording Mode:
+     * Red blinking recording indicator.
+     * Recording timer (e.g. "0:15").
+     * Animated sound amplitude waveform.
+     * Trash Icon: Discards recording.
+     * Stop / Preview button.
+     * Send Button: Uploads audio file to `chat-media` bucket and calls `/api/whatsapp/send`.
+
+4. META TEMPLATE PICKER MODAL:
+   - Search input & Category tabs (Marketing, Utility, Authentication).
+   - Template selection card with green APPROVED badge.
+   - Variable Input Form: Displays input for each `{{1}}`, `{{2}}` variable.
+   - Header Media Picker: If template requires media header, provides file upload.
+   - Action: "Send Template" -> Calls `/api/whatsapp/send`.
+
+5. QUICK REPLIES MODAL:
+   - Triggered by typing `/` in text input or tapping Lightning icon.
+   - Lists canned snippets (e.g. `/hours`, `/pricing`). Tapping inserts snippet into text input.
+
+6. AI COPILOT DRAFT ASSISTANT:
+   - Options: "Draft Smart Reply", "Rephrase Politely", "Shorten", "Expand", "Translate".
+   - Mutation: `POST /api/ai/draft` with `{ conversationId, mode }`.
+   - Preview card shows generated text with "Use Draft" button.
+
+--------------------------------------------------------------------------------
+SCREEN 13: CONTACT CRM PROFILE DRAWER (/inbox contact-drawer)
+--------------------------------------------------------------------------------
+1. IDENTITY & CONTACT DETAILS:
+   - Full Name, Phone Number (with copy button and direct phone dialer), WhatsApp `@username`, BSUID.
+   - Email address, Company.
+
+2. TAGS MANAGEMENT:
+   - Displays assigned tag pills with remove (x) button.
+   - Add Tag: Dropdown showing existing tags. Selecting tag calls:
+     `POST /api/contacts/${contactId}/tags` with `{ tag_id }`.
+   - Remove Tag: Calls `DELETE /api/contacts/${contactId}/tags` with `{ tag_id }`.
+
+3. CUSTOM FIELDS EDITOR:
+   - Displays all defined custom fields (e.g., "Tier", "Renewal Date", "Budget").
+   - Inline editing saves to `contact_custom_values` table.
+
+4. LINKED DEALS SECTION:
+   - Renders active sales deals linked to this contact with stage color badge and deal value.
+   - "+ Add Deal" button opens deal creation modal pre-linked to this contact.
+
+5. AGENT NOTES TIMELINE:
+   - Chronological list of team notes from `contact_notes` table.
+   - Add Note: Textarea + "Save Note" button:
+     `supabase.from("contact_notes").insert({ contact_id, user_id, note_text })`.
+   - Delete Note: Trash icon on author's notes.
+
+6. DANGER ACTIONS:
+   - "Block Contact / Opt-Out" toggle.
+   - "Delete Contact" button with confirmation modal.
+
+================================================================================
+2.4 CONTACTS MANAGEMENT & CRM DIRECTORY MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 14: CONTACTS DIRECTORY SCREEN (/contacts)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Search, filter, view, and bulk-manage customer records.
+
+2. FUNCTIONALITY CHECKS & GUARDS:
+   - Role Guard: All roles can view. Only agents, admins, and owners can add, edit, or delete.
+   - Pagination: Loads 50 contacts per page with infinite scroll.
+
+3. DATA FETCHING SPECIFICATION:
+   - Query:
+     ```typescript
+     const { data, count, error } = await supabase
+       .from("contacts")
+       .select("*, tags:contact_tags(tags(*))", { count: "exact" })
+       .order("created_at", { ascending: false })
+       .range(page * 50, (page + 1) * 50 - 1);
+     ```
+   - Filter Queries:
+     * Search: `.ilike("name", `%${search}%`)` or `.ilike("phone", `%${search}%`)`
+     * Tag Filter: Join filter matching selected `tag_id`.
+
+4. BULK ACTIONS SPECIFICATION:
+   - Selection State: Set of selected `contact.id`s.
+   - Bulk Tag Action: Prompts for tag selection, then inserts into `contact_tags` for all selected IDs.
+   - Bulk Delete Action: Displays confirmation dialog: "Delete X contacts permanently?". Calls:
+     `supabase.from("contacts").delete().in("id", Array.from(selectedIds))`
+   - Bulk Export Action: Generates CSV of selected rows.
+
+5. FIELD-BY-FIELD & OPTION-BY-OPTION UI BREAKDOWN:
+   - Search Input with clear button.
+   - Tag Filter Dropdown (Multi-select pills).
+   - Contact Row: Checkbox, Avatar, Name/Phone, Email, Company, Tags pills.
+   - Action Bar: "+ Add Contact" button, "Import CSV" button, "Custom Fields" button.
+
+--------------------------------------------------------------------------------
+SCREEN 15: ADD / EDIT CONTACT MODAL
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Add a new contact or edit existing contact details with automatic phone deduplication.
+
+2. FUNCTIONALITY CHECKS & DEDUPLICATION LOGIC:
+   - Step 1 (Phone Normalization): Convert phone string into digits-only canonical form:
+     `phone_normalized = phone.replace(/\D/g, "")`
+   - Step 2 (Deduplication Check):
+     ```typescript
+     const { data: existing } = await supabase
+       .from("contacts")
+       .select("id, name, phone")
+       .eq("account_id", accountId)
+       .eq("phone_normalized", normalizedPhone)
+       .maybeSingle();
+     ```
+     * If existing contact found and not editing self: Display warning alert:
+       "A contact with this phone number already exists: [Name]" with button "Open Contact".
+   - Step 3 (International Format Validation): Phone must begin with + and country code (E.164).
+
+3. DATA ADDITIONS & MUTATIONS (SAVE CONTACT):
+   - Step 1: Insert / Update `contacts` table:
+     ```typescript
+     const { data: contact, error } = await supabase
+       .from("contacts")
+       .upsert({
+         id: contactId || undefined,
+         account_id: accountId,
+         phone: phone.trim(),
+         name: name.trim() || null,
+         email: email.trim() || null,
+         company: company.trim() || null,
+       })
+       .select()
+       .single();
+     ```
+   - Step 2: Sync Tags:
+     * Insert newly selected tags into `contact_tags`.
+     * Delete unselected tags from `contact_tags`.
+   - Step 3: Save Custom Field Values:
+     * Upsert into `contact_custom_values` for each non-empty custom field value.
+
+4. FIELD-BY-FIELD & OPTION-BY-OPTION BREAKDOWN:
+   - Field 1: Phone Number (Required, international country code selector dropdown + number input).
+   - Field 2: Full Name (Optional, text).
+   - Field 3: Email Address (Optional, email input).
+   - Field 4: Company Name (Optional, text).
+   - Field 5: Assigned Tags (Multi-select pill picker).
+   - Dynamic Fields: Renders an input for every workspace custom field (Text, Number, Date, Boolean, Dropdown).
+   - Buttons: "Cancel" & "Save Contact" (Primary Green).
+
+--------------------------------------------------------------------------------
+SCREEN 16: CSV CONTACT IMPORT WIZARD (/contacts import)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Bulk import contacts from CSV spreadsheets with column mapping and duplicate resolution.
+
+2. STEP-BY-STEP PROCESS:
+   - Step 1: Upload CSV file (Max 10 MB). Read headers and display row count.
+   - Step 2: Column Mapping Screen:
+     * Phone Column (Required - dropdown of CSV headers).
+     * Name Column (Optional).
+     * Email Column (Optional).
+     * Company Column (Optional).
+     * Tags Column (Optional).
+     * Custom Fields Mapping.
+   - Step 3: Duplicate Strategy:
+     * Option A: "Skip Duplicates" (Ignore rows matching existing phone numbers).
+     * Option B: "Update Existing" (Overwrite name/email/custom fields if phone matches).
+   - Step 4: Import Progress & Report:
+     * Batch inserts 100 rows at a time into `contacts`.
+     * Progress bar with percentage.
+     * Summary: "Imported 2,150 contacts. 18 skipped due to invalid phone numbers."
+
+--------------------------------------------------------------------------------
+SCREEN 17: CUSTOM FIELDS CONFIGURATION MODAL
+--------------------------------------------------------------------------------
+1. PURPOSE: Manage account-wide custom fields schema for contacts.
+2. FIELDS BREAKDOWN:
+   - Field Name (Text, required, e.g. "Lead Score", "Tax ID").
+   - Field Type Dropdown: `text` | `number` | `date` | `boolean` | `select`.
+   - Field Options: (Only for `select` type: comma-separated list of choices).
+3. DATA MUTATION:
+   `supabase.from("custom_fields").insert({ account_id, field_name, field_type, field_options })`
+
+--------------------------------------------------------------------------------
+SCREEN 18: CONTACT EXPORT ACTION
+--------------------------------------------------------------------------------
+1. PROCESS:
+   - Queries all contacts matching active search/filter.
+   - Generates CSV string and saves via native file system.
+   - Opens native share sheet.
+
+================================================================================
+2.5 SALES PIPELINES & DEALS MODULE (KANBAN BOARD)
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 19: PIPELINE KANBAN BOARD SCREEN (/pipelines)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Interactive visual sales board for tracking deal stages, moving prospects through the funnel,
+   and monitoring revenue by deal stage.
+
+2. FUNCTIONALITY CHECKS & GUARDS:
+   - Role Guard: All roles can view. Only agents, admins, and owners can create or move deals.
+   - Default Currency: Formats all deal monetary values using account default currency.
+
+3. DATA FETCHING SPECIFICATION:
+   - Fetch Active Pipeline & Stages:
+     ```typescript
+     const { data: pipeline } = await supabase.from("pipelines").select("*").limit(1).single();
+     const { data: stages } = await supabase
+       .from("pipeline_stages")
+       .select("*")
+       .eq("pipeline_id", pipeline.id)
+       .order("position", { ascending: true });
+     ```
+   - Fetch Deals:
+     ```typescript
+     const { data: deals } = await supabase
+       .from("deals")
+       .select("*, contact:contacts(*), assignee:profiles(*)")
+       .eq("pipeline_id", pipeline.id);
+     ```
+
+4. STAGE MOVE MUTATION (DRAG-AND-DROP OR ACTION SHEET):
+   - Optimistic Update: Instantly update deal's `stage_id` in local state.
+   - Database Mutation:
+     ```typescript
+     await supabase
+       .from("deals")
+       .update({ stage_id: newStageId, updated_at: new Date().toISOString() })
+       .eq("id", dealId);
+     ```
+
+5. FIELD-BY-FIELD & OPTION-BY-OPTION BREAKDOWN:
+   - Pipeline Dropdown: Select between active sales funnels.
+   - Stage Column Header:
+     * Color indicator dot.
+     * Stage Title (e.g., "Proposal Sent").
+     * Deals count badge.
+     * Column Summed Value (Sum of deal values formatted with currency).
+     * "+" Quick Add Deal button.
+   - Deal Card Anatomy:
+     * Deal Title (Bold, e.g. "Acme Corp Annual Deal").
+     * Contact Name with WhatsApp Icon (Tapping opens WhatsApp thread).
+     * Formatted Value (e.g. "$12,500").
+     * Expected Close Date badge.
+     * Assigned Agent Initials Avatar.
+   - Action: Tapping card opens Add / Edit Deal Modal.
+
+--------------------------------------------------------------------------------
+SCREEN 20: ADD / EDIT DEAL MODAL & SHEET
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY: Create or update deal details, close dates, value, and stage.
+
+2. FIELDS BREAKDOWN:
+   - Field 1: Deal Title (Text, Required, e.g., "Acme Enterprise Deal").
+   - Field 2: Contact Picker (Typeahead search linked to `contacts` table, Required).
+   - Field 3: Deal Value (Numeric input, e.g., "15000").
+   - Field 4: Currency (Dropdown: USD, EUR, GBP, INR, AUD, CAD, etc.).
+   - Field 5: Pipeline & Stage (Dropdown of active stages).
+   - Field 6: Expected Close Date (Native Date Picker).
+   - Field 7: Assigned Agent (Dropdown of team members from `profiles`).
+   - Field 8: Deal Status (Radio buttons: `open` | `won` | `lost`).
+   - Field 9: Notes (Textarea for agent notes).
+
+3. DATA ADDITIONS & MUTATIONS (SAVE DEAL):
+   ```typescript
+   await supabase.from("deals").upsert({
+     id: dealId || undefined,
+     account_id: accountId,
+     pipeline_id: pipelineId,
+     stage_id: stageId,
+     contact_id: contactId,
+     title: title.trim(),
+     value: parseFloat(value) || 0,
+     currency,
+     expected_close_date: closeDate || null,
+     assigned_to: assignedTo || null,
+     status,
+     notes: notes.trim() || null,
+   });
+   ```
+   On Delete: `supabase.from("deals").delete().eq("id", dealId)`.
+
+--------------------------------------------------------------------------------
+SCREEN 21: PIPELINE SETTINGS & STAGE REORDERING MODAL
+--------------------------------------------------------------------------------
+1. PURPOSE: Configure sales stages, positions, and colors.
+2. PROCESS:
+   - Drag handles to reorder `position` values (1, 2, 3...).
+   - Stage Name edit input.
+   - 8-color preset palette selector.
+   - "+ Add Stage" button.
+   - Delete Stage: If stage contains deals, prompts agent to reassign deals to another stage first.
+
+--------------------------------------------------------------------------------
+SCREEN 22: PIPELINE REVENUE FORECASTING & FUNNEL ANALYTICS
+--------------------------------------------------------------------------------
+1. PURPOSE: Forecast revenue and analyze stage-by-stage drop-off.
+2. CALCULATIONS:
+   - Total Pipeline Value: Sum of all open deal values.
+   - Weighted Forecast Value: Sum of `deal.value * stage.probability`.
+     (Stage 1 = 10%, Stage 2 = 25%, Stage 3 = 50%, Stage 4 = 75%, Won = 100%).
+   - Win Rate: `(Closed Won Deals / (Closed Won + Closed Lost Deals)) * 100`.
+
+================================================================================
+2.6 COMMERCE, PRODUCT CATALOG & IN-CHAT ORDERS MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 23: COMMERCE DASHBOARD & ORDERS ROSTER SCREEN (/commerce)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Manage WhatsApp storefront sales, incoming shopping carts, and customer checkout orders.
+
+2. DATA FETCHING SPECIFICATION:
+   - Fetch Orders & Metrics:
+     `GET /api/whatsapp/commerce/orders?status=${statusFilter}`
+     Response Schema:
+     ```typescript
+     {
+       orders: CommerceOrder[],
+       metrics: {
+         totalRevenue: number,
+         pendingCount: number,
+         paidCount: number,
+         totalOrders: number
+       }
+     }
+     ```
+   - Fetch Products Catalog:
+     `GET /api/whatsapp/catalog/products?limit=100`
+     Response Schema: `{ products: CommerceProduct[] }`
+
+3. FIELD-BY-FIELD & OPTION-BY-OPTION BREAKDOWN:
+   - 4 Top Metric Cards:
+     * Total Revenue (Formatted currency e.g. "$12,450").
+     * Pending Orders (Yellow count pill).
+     * Paid Orders (Green count pill).
+     * Total Orders count.
+   - Tab Switcher: "Orders" | "Product Catalog".
+   - Orders Status Filter Chips: "All" | "Pending" | "Processing" | "Paid" | "Completed" | "Cancelled".
+   - Search Input: Search by Order Reference ID or customer name.
+   - Order Card Anatomy:
+     * Reference ID (e.g. `ORD-84920`).
+     * Customer Name & Phone number with WhatsApp quick-chat link.
+     * Items Count (e.g. "3 items").
+     * Grand Total (e.g. "$149.00").
+     * Status Badge: Yellow (Pending), Blue (Processing), Green (Paid), Red (Cancelled).
+     * Timestamp: Relative date.
+   - Action: Tapping card opens Order Details & Payment Modal.
+
+--------------------------------------------------------------------------------
+SCREEN 24: SYNCED PRODUCT CATALOG BROWSER
+--------------------------------------------------------------------------------
+1. "SYNC FROM META" ACTION:
+   - Button: "Sync Catalog from Meta".
+   - Mutation: `POST /api/whatsapp/catalog/sync`.
+   - Fetches products from Meta Graph API using connected `catalog_id`.
+   - Upserts into `commerce_products` table and displays toast: "Catalog synced: X products".
+2. PRODUCT CARD ELEMENTS:
+   - Thumbnail image.
+   - Retailer ID / SKU.
+   - Title and description snippet.
+   - Price with currency code.
+   - Stock Badge: "In Stock" (Green) or "Out of Stock" (Gray).
+   - Action: "Send in Chat" button.
+
+--------------------------------------------------------------------------------
+SCREEN 25: ORDER DETAILS & PAYMENT MODAL
+--------------------------------------------------------------------------------
+1. PURPOSE: Review items, calculate shipping/tax, and collect payment.
+2. DATA BREAKDOWN:
+   - Order Reference ID & Customer contact link.
+   - Items Table: Thumbnail, Product Name, SKU, Quantity x Unit Price = Subtotal.
+   - Financial Totals: Subtotal, Shipping, Tax, Total Amount.
+   - Customer Notes: Special delivery instructions.
+3. PAYMENT ACTIONS:
+   - Action 1: "Generate & Send Payment Link":
+     * Mutation: `POST /api/whatsapp/commerce/orders/${orderId}/pay-link`.
+     * Generates payment link via configured gateway (Razorpay / Stripe / WhatsApp Pay / UPI).
+     * Sends link into customer's WhatsApp thread with CTA button.
+   - Action 2: "Mark as Paid Manually":
+     * Mutation: `POST /api/whatsapp/commerce/orders/${orderId}/mark-paid`.
+     * Updates order status to `paid` and records `paid_at` timestamp.
+   - Action 3: "Cancel Order" with reason prompt.
+
+--------------------------------------------------------------------------------
+SCREEN 26: COMMERCE SETTINGS & PAYMENT GATEWAYS (/settings?tab=commerce)
+--------------------------------------------------------------------------------
+1. META CATALOG CONFIGURATION:
+   - Meta Catalog ID (Input).
+   - Catalog Name display.
+   - Status: "Connected" (Green check) or "Disconnected" (Red).
+2. PAYMENT PROVIDER SELECTOR (RADIO GROUP):
+   - Choice 1: "Razorpay" (Inputs: `key_id`, `key_secret`).
+   - Choice 2: "Stripe" (Inputs: `publishable_key`, `secret_key`).
+   - Choice 3: "WhatsApp Pay" (Input: `payment_configuration_name`).
+   - Choice 4: "UPI Manual" (Inputs: `upi_id`, `merchant_name`).
+3. AUTOMATION SWITCH:
+   - "Auto-Create Payment Link on Customer Cart Submission" (Boolean toggle).
+4. DATA MUTATION:
+   `POST /api/whatsapp/commerce/config` with `{ catalog_id, payment_provider, payment_config, auto_create_payment_link }`.
+
+================================================================================
+2.7 BROADCASTS & OUTBOUND CAMPAIGNS MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 27: BROADCASTS DIRECTORY SCREEN (/broadcasts)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Manage mass WhatsApp announcements, product launches, and customer re-engagement campaigns.
+
+2. DATA FETCHING SPECIFICATION:
+   ```typescript
+   const { data: broadcasts } = await supabase
+     .from("broadcasts")
+     .select("*")
+     .order("created_at", { ascending: false });
+   ```
+   Client-side status filters: "All" | "Draft" | "Scheduled" | "Sending" | "Sent" | "Failed".
+
+3. BROADCAST CARD ANATOMY:
+   - Campaign Name (Bold, e.g. "VIP Early Access Sale").
+   - Template Name & Language badge (e.g. `early_access_promo (en_US)`).
+   - Total Audience Count badge (e.g. "1,450 recipients").
+   - Status Badge: Gray (Draft), Blue (Scheduled), Pulsating Green (Sending), Emerald (Sent), Red (Failed).
+   - Progress Bar: Percentages of Sent, Delivered, and Read.
+   - Stat Counters Row: Sent | Delivered | Read | Replied | Failed.
+   - Action: Tap navigates to Broadcast Analytics Screen (/broadcasts/:id).
+   - Top Button: "+ New Broadcast Campaign" -> Navigates to Wizard.
+
+--------------------------------------------------------------------------------
+SCREEN 28: 4-STEP BROADCAST CREATION WIZARD (/broadcasts/new)
+--------------------------------------------------------------------------------
+1. STEP 1 - CHOOSE APPROVED META TEMPLATE:
+   - Query: `supabase.from("message_templates").select("*").eq("status", "APPROVED")`
+   - Category Filter: All | Marketing | Utility | Authentication.
+   - Search Input.
+   - Interactive Template Preview Card showing header media, body copy, footer, and CTA buttons.
+   - Next Action: "Next: Select Audience".
+
+2. STEP 2 - SELECT AUDIENCE:
+   - Audience Source Selector (Segmented buttons):
+     * Option 1: "All Contacts" (Broadcasts to entire database).
+     * Option 2: "Filter by Tags" (Multi-select tag pills; recipients matching any selected tag).
+     * Option 3: "Filter by Custom Field" (Field ID + Operator [is, is_not, contains] + Value).
+     * Option 4: "Upload CSV Audience" (One-off broadcast recipient phone list).
+   - Exclude Tags Selector (e.g. Exclude "Unsubscribed" or "Do Not Call").
+   - Live Audience Counter: Dynamic query calculates exact recipient count in real time.
+   - Next Action: "Next: Personalize Message".
+
+3. STEP 3 - PERSONALIZE & HEADER MEDIA:
+   - Header Media Upload: If template header is IMAGE, VIDEO, or DOCUMENT, upload media file.
+   - Dynamic Variable Mapping:
+     * For each variable in template body (`{{1}}`, `{{2}}`...):
+     * Mapping Source Dropdown:
+       - "Contact First Name"
+       - "Contact Full Name"
+       - "Contact Company"
+       - "Contact Phone"
+       - "Custom Field: [Name]"
+       - "Static Text"
+     * Fallback Value: Default text if contact attribute is empty.
+   - Live Preview Box: Shows formatted preview with mapped values.
+   - Next Action: "Next: Schedule & Send".
+
+4. STEP 4 - SCHEDULE, THROTTLING & LAUNCH:
+   - Campaign Name Input (Required).
+   - Dispatch Timing (Radio group):
+     * "Send Immediately"
+     * "Schedule for Later" (Date & Time picker).
+   - Dispatch Throttling Rate: Slider setting messages per second (Default: 20 msg/sec).
+   - Launch Mutation:
+     `POST /api/whatsapp/broadcast`
+     Payload:
+     ```typescript
+     {
+       name: campaignName.trim(),
+       templateName: template.name,
+       templateLanguage: template.language,
+       variables: variableMappingObject,
+       audience: audienceConfigObject,
+       scheduledAt: scheduledDate?.toISOString(),
+     }
+     ```
+     Response: `{ ok: true, broadcastId: string, recipientCount: number }`
+
+--------------------------------------------------------------------------------
+SCREEN 29: BROADCAST ANALYTICS & RECIPIENT LOG SCREEN (/broadcasts/:id)
+--------------------------------------------------------------------------------
+1. REALTIME DELIVERY FUNNEL:
+   - Funnel Bar 1: Total Targeted
+   - Funnel Bar 2: Sent to Meta
+   - Funnel Bar 3: Delivered to Device
+   - Funnel Bar 4: Read by Customer
+   - Funnel Bar 5: Replied by Customer
+   - Funnel Bar 6: Failed / Rejected
+
+2. RECIPIENT DELIVERY LOG TABLE:
+   - Query:
+     ```typescript
+     supabase
+       .from("broadcast_recipients")
+       .select("*, contact:contacts(*)")
+       .eq("broadcast_id", broadcastId);
+     ```
+   - Filter by status: All | Sent | Delivered | Read | Failed.
+   - Row Elements: Contact Name, Phone, Delivery Status badge, Timestamp, Error message.
+
+3. CAMPAIGN CONTROL ACTIONS:
+   - "Resume Campaign": `POST /api/whatsapp/broadcast/${broadcastId}/resume`.
+   - "Retry Failed Recipients": Re-dispatches templates to failed recipient rows.
+   - "Export Report to CSV": Downloads delivery spreadsheet.
+
+================================================================================
+2.8 AUTOMATIONS & RULES ENGINE MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 30: AUTOMATIONS DIRECTORY SCREEN (/automations)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Manage event-driven background bots and rules that trigger instant replies, contact tagging,
+   deal creation, or webhooks based on incoming customer interactions.
+
+2. DATA FETCHING SPECIFICATION:
+   ```typescript
+   const { data: automations } = await supabase
+     .from("automations")
+     .select("*")
+     .order("created_at", { ascending: false });
+   ```
+
+3. AUTOMATION CARD ANATOMY:
+   - Automation Name & Description.
+   - Trigger Type badge (e.g. `Keyword: "quote"`, `First Inbound Message`).
+   - Active / Inactive Switch: Instantly updates `is_active` in database:
+     `supabase.from("automations").update({ is_active: nextState }).eq("id", auto.id)`.
+   - Total Executions badge (e.g. "320 runs").
+   - 3-Dots Action Menu: "Edit Rule", "Duplicate Rule", "View Logs", "Delete Rule".
+   - Top Button: "+ New Automation" -> Opens Builder.
+
+--------------------------------------------------------------------------------
+SCREEN 31: AUTOMATION RULE BUILDER (/automations/new & /automations/:id/edit)
+--------------------------------------------------------------------------------
+1. METADATA SECTION:
+   - Automation Name (Required).
+   - Description (Optional).
+   - Active Switch (Default: true).
+
+2. TRIGGER CONFIGURATION (8 EVENT TYPES):
+   1. `new_message_received`: Fires on every inbound customer WhatsApp message.
+   2. `first_inbound_message`: Fires only when a new phone number contacts the workspace for the first time.
+   3. `keyword_match`:
+      * Keywords list: Comma-separated (e.g. "quote, estimate, pricing").
+      * Match Type: "exact" (full text match) | "contains" (substring) | "word" (whole word boundary).
+      * Case Sensitive: Boolean toggle (Default: false).
+   4. `new_contact_created`: Fires when a contact is added.
+   5. `conversation_assigned`: Fires when an agent is assigned.
+   6. `tag_added`: Fires when a specific tag is attached to a contact (Select Tag dropdown).
+   7. `time_based`: Recurring cron or time schedule string (e.g. "09:00").
+   8. `interactive_reply`: Matches customer button taps on specified `reply_ids`.
+
+3. SEQUENTIAL ACTIONS TREE (13 ACTION STEP TYPES):
+   1. `send_message`: Textarea supporting `{{contact.name}}`, `{{message.text}}` variables.
+   2. `send_buttons`: Body text + 1 to 3 interactive reply buttons.
+   3. `send_list`: Header, body, button label, grouped sections and items.
+   4. `send_template`: Select template + language + variable mapping.
+   5. `add_tag`: Select tag from workspace catalog.
+   6. `remove_tag`: Select tag to remove.
+   7. `assign_conversation`: Mode: "Specific Agent" (Select member) or "Round Robin".
+   8. `update_contact_field`: Field choice (`name`, `email`, `company`, or `custom:UUID`) + new value.
+   9. `create_deal`: Select Pipeline, Stage, Deal Title, and numeric Value.
+   10. `wait`: Amount (number) + Unit ("minutes" | "hours" | "days").
+   11. `condition` (If / Else):
+       * Subject: "contact_field" | "tag_presence" | "message_content" | "time_of_day".
+       * Operator: equals | contains | present | absent.
+       * Value: Comparison string.
+       * Branches into `yes` (True branch) and `no` (False branch).
+   12. `send_webhook`: HTTP POST URL, Custom Headers JSON, Body Template JSON.
+   13. `close_conversation`: Resolves thread status to 'closed'.
+
+4. SAVE AUTOMATION MUTATION:
+   `POST /api/automations` with payload containing `{ name, trigger_type, trigger_config, is_active, steps }`.
+
+--------------------------------------------------------------------------------
+SCREEN 32: AUTOMATION EXECUTION LOGS (/automations/:id/logs)
+--------------------------------------------------------------------------------
+1. PURPOSE: Audit trail of bot triggers, executed step paths, and errors.
+2. QUERY:
+   `supabase.from("automation_logs").select("*, contact:contacts(*)").eq("automation_id", automationId).order("created_at", { ascending: false })`
+3. LOG ROW BREAKDOWN:
+   - Timestamp & Contact info.
+   - Trigger Event label.
+   - Steps Executed Path (Visual step badges: Success, Skipped, Failed).
+   - Error Diagnostic message (if failed).
+
+================================================================================
+2.9 VISUAL FLOWS (NO-CODE CHATBOT BUILDER) MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 33: FLOWS DIRECTORY SCREEN (/flows)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Build conversational WhatsApp chatbots that guide customers through multi-turn questions,
+   interactive button trees, and human agent handoffs.
+
+2. DATA FETCHING SPECIFICATION:
+   ```typescript
+   const { data: flows } = await supabase
+     .from("flows")
+     .select("*")
+     .order("created_at", { ascending: false });
+   ```
+3. FLOW CARD ELEMENTS:
+   - Flow Name & Description.
+   - Trigger Keyword (e.g., `#start`, `support`).
+   - Active Status Switch.
+   - Total Runs count & Completion Rate %.
+   - Actions: Edit Flow, Test in Simulator, View Analytics, Delete.
+
+--------------------------------------------------------------------------------
+SCREEN 34: MOBILE FLOW VISUALIZER & NODE EDITOR (/flows/:id)
+--------------------------------------------------------------------------------
+1. NODE GRAPH / LIST:
+   Renders connected state machine nodes with target edge connections (`next_node_key`).
+
+2. 10 NODE CONFIGURATION FORMS & FIELDS:
+   1. `start` Node: Entry trigger -> `next_node_key`.
+   2. `send_message` Node: Text input supporting `{{vars.*}}` interpolation -> `next_node_key`.
+   3. `send_buttons` Node:
+      * Header text (optional), Body text (required), Footer text (optional).
+      * 1-3 buttons with visible title (<= 20 chars), `reply_id`, and `next_node_key`.
+   4. `send_list` Node:
+      * Body text, button label, grouped sections with rows (title, description, `next_node_key`).
+   5. `send_media` Node:
+      * Media Type: Image | Video | Document.
+      * Media File URL (Uploaded to `flow-media` bucket).
+      * Caption text (<= 1024 chars), Filename (for documents) -> `next_node_key`.
+   6. `collect_input` Node:
+      * Customer Prompt Text.
+      * Variable Storage Key (`var_key` saved in `flow_runs.vars`).
+      * Validation: Any | Email | Phone | Regex -> `next_node_key`.
+   7. `condition` Node:
+      * Subject: Variable (`var`) | Tag (`tag`) | Contact Field (`contact_field`).
+      * Subject Key (e.g. `budget` or field name).
+      * Operator: equals | contains | present | absent.
+      * Value: comparison string.
+      * Target Edges: `true_next` (If true) & `false_next` (If false).
+   8. `set_tag` Node: Mode: Add | Remove, Tag ID -> `next_node_key`.
+   9. `handoff` Node: Internal handoff note + Assign to agent ID (Hands off bot to agent).
+   10. `end` Node: Terminal node terminating flow.
+
+--------------------------------------------------------------------------------
+SCREEN 35: FLOW RUNS & CUSTOMER TRACE LOGS (/flows/:id/runs & analytics)
+--------------------------------------------------------------------------------
+1. CUSTOMER SESSIONS FEED:
+   - Table of active and completed flow sessions (`flow_runs`).
+   - Contact name, Current Step, Captured variables (`vars` JSON), Session status (active, completed, dropped).
+2. DROP-OFF ANALYTICS:
+   - Step-by-step funnel visualization showing which node experiences the highest abandonment.
+
+================================================================================
+2.10 AI AGENTS & AUTOREPLY COPILOT MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 36: AI SETUP & MODEL PARAMETERS (/agents?tab=setup)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY:
+   Configure autonomous AI auto-reply agent to respond to inbound WhatsApp customer messages
+   using custom prompt instructions and retrieval-augmented generation (RAG).
+
+2. DATA FETCHING SPECIFICATION:
+   `GET /api/ai/config`
+   Response: `{ configured: boolean, provider: string, model: string, is_active: boolean, auto_reply_enabled: boolean, prompt: string, temperature: number, max_tokens: number, max_replies: number, handoff_keywords: string }`
+
+3. FIELD-BY-FIELD & OPTION-BY-OPTION BREAKDOWN:
+   - Master Auto-Reply Switch: Global toggle to enable/disable automated AI messaging.
+   - AI Provider Selector (Radio/Dropdown): OpenAI | Anthropic | Groq | Custom OpenAI-Compatible.
+   - API Key Input: Secret key with Eye mask toggle.
+   - Model Selector:
+     * OpenAI: `gpt-4o`, `gpt-4o-mini`.
+     * Anthropic: `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`.
+     * Groq: `llama-3.3-70b-versatile`.
+   - System Instructions / Prompt Textarea:
+     * Persona definition, company policies, tone of voice, formatting instructions.
+   - Temperature Slider: Range 0.0 (Strict/Precise) to 1.0 (Creative). Default: 0.2.
+   - Max Tokens Input: Maximum generated token length per reply (Default: 500).
+   - Safety Guardrails:
+     * Max Consecutive Replies per conversation before auto-handoff (Default: 5).
+     * Handoff Trigger Keywords: Comma-separated (e.g. "human, agent, representative, operator").
+   - Action: "Save AI Configuration" -> `POST /api/ai/config`.
+
+--------------------------------------------------------------------------------
+SCREEN 37: KNOWLEDGE BASE DOCUMENTS & FAQS (/agents?tab=knowledge)
+--------------------------------------------------------------------------------
+1. PURPOSE: Ground the AI agent with accurate factual documentation.
+2. DATA FETCHING:
+   `GET /api/ai/knowledge` -> `{ sources: Array<{ id, title, type, chunk_count, created_at }> }`
+3. "+ ADD KNOWLEDGE SOURCE" MODAL:
+   - Source Title input (e.g. "Pricing & Refund FAQ").
+   - Source Type: Text Snippet | Upload File (PDF/DOCX) | Website URL.
+   - Content input / file uploader.
+   - Action: "Save & Embed Source" -> Chunks text and generates vector embeddings.
+4. REINDEX ACTION:
+   - "Reindex All Knowledge" button -> `POST /api/ai/knowledge/reindex`.
+
+--------------------------------------------------------------------------------
+SCREEN 38: AI SANDBOX / PLAYGROUND (/agents?tab=playground)
+--------------------------------------------------------------------------------
+1. PURPOSE: Test AI prompts and knowledge retrieval in a simulated environment before deploying to WhatsApp.
+2. PROCESS:
+   - Interactive chat simulator sending test prompts.
+   - Inspector Drawer: Displays retrieved context chunks and token metrics.
+
+--------------------------------------------------------------------------------
+SCREEN 39: AI TOKEN USAGE & COST ANALYTICS (/agents?tab=usage)
+--------------------------------------------------------------------------------
+1. DATA FETCHING: `GET /api/ai/usage`
+2. METRICS: Total Input Tokens, Total Output Tokens, Estimated USD Cost, Requests Count.
+3. CHART: Token consumption by day and breakdown by model.
+
+================================================================================
+2.11 NOTIFICATIONS CENTER MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 40: NOTIFICATIONS FEED SCREEN (/notifications)
+--------------------------------------------------------------------------------
+1. PURPOSE & USER STORY: In-app notification center alerting agents to assigned chats, mentions, and system events.
+2. DATA FETCHING:
+   ```typescript
+   const { data: notifications } = await supabase
+     .from("notifications")
+     .select("*")
+     .eq("account_id", accountId)
+     .order("created_at", { ascending: false })
+     .limit(100);
+   ```
+3. ACTIONS:
+   - "Mark All as Read": Updates `read_at = now()` on all rows.
+   - Tap Notification: Marks row read and deep-links to associated conversation or deal.
+
+================================================================================
+2.12 WORKSPACE & SETTINGS SUITE MODULE
+================================================================================
+
+--------------------------------------------------------------------------------
+SCREEN 41: SETTINGS OVERVIEW HUB (/settings)
+--------------------------------------------------------------------------------
+1. GROUPED NAVIGATION HUBS:
+   - Account Section: Profile, Login & Security, Appearance.
+   - Workspace Section: WhatsApp Config, Templates, Quick Replies, Fields & Tags, Deals, Commerce, Team Members, API Keys.
+
+--------------------------------------------------------------------------------
+SCREEN 42: WHATSAPP CLOUD API SETTINGS (/settings?tab=whatsapp)
+--------------------------------------------------------------------------------
+1. PURPOSE: Connect workspace to Meta's official WhatsApp Business Cloud API.
+2. FIELDS BREAKDOWN:
+   - Phone Number ID (Required, numeric string).
+   - WhatsApp Business Account ID (WABA ID) (Required, numeric string).
+   - Permanent Access Token (Required, masked secret text).
+   - Webhook Verify Token (Auto-generated secret).
+   - Webhook Callback URL (Copyable: `https://your-domain.com/api/whatsapp/webhook`).
+   - App Secret (Cryptographic HMAC-SHA256 signature verification).
+   - "Mirror Inbound Media to Storage" Switch: Automatically archives attachments into `chat-media`.
+3. ACTION: "TEST CONNECTION & REGISTER NUMBER":
+   - Mutation: `POST /api/whatsapp/config/verify-registration`.
+   - Calls Meta Graph API `/register` endpoint.
+   - On Success: Displays green checkmark, verified phone display name, and registration timestamp.
+   - On Failure: Displays exact Meta API error title and code.
+
+--------------------------------------------------------------------------------
+SCREEN 43: META MESSAGE TEMPLATES MANAGER (/settings?tab=templates)
+--------------------------------------------------------------------------------
+1. PURPOSE: Manage, synchronize, and submit WhatsApp message templates to Meta for approval.
+2. "SYNC FROM META" ACTION:
+   - Mutation: `POST /api/whatsapp/templates/sync`.
+   - Fetches latest approval statuses: `APPROVED`, `PENDING`, `REJECTED`, `PAUSED`, `DISABLED`.
+3. "CREATE NEW TEMPLATE" DIALOG:
+   - Template Name (snake_case, required, e.g. `order_update_v1`).
+   - Category Dropdown: Marketing | Utility | Authentication.
+   - Language Dropdown (e.g. `en_US`, `es_ES`, `pt_BR`).
+   - Header Type Dropdown: None | Text | Image | Video | Document.
+   - Body Text (Required): Text with placeholders `{{1}}`, `{{2}}`.
+   - Footer Text (Optional).
+   - Buttons: Add up to 3 Quick Reply buttons or 2 Call-to-Action (URL / Phone) buttons.
+   - Sample Values (Required): Sample text for each placeholder.
+   - Action: "Submit for Approval" -> `POST /api/whatsapp/templates/submit`.
+
+--------------------------------------------------------------------------------
+SCREEN 44: QUICK REPLIES MANAGER (/settings?tab=quick-replies)
+--------------------------------------------------------------------------------
+1. PURPOSE: Create and edit reusable canned snippets.
+2. FIELDS: Shortcut Title (e.g. `/hello`), Kind (`text` | `interactive`), Message Content.
+3. MUTATION: `supabase.from("quick_replies").insert({ account_id, title, kind, content_text })`.
+
+--------------------------------------------------------------------------------
+SCREEN 45: FIELDS & TAGS SETTINGS (/settings?tab=fields)
+--------------------------------------------------------------------------------
+1. TAGS TAB:
+   - List active tags with associated contact count and color badge.
+   - "+ Add Tag" Dialog: Tag Name input + Color picker palette (8 presets).
+   - Delete Tag action.
+2. CUSTOM FIELDS TAB:
+   - List defined contact custom fields.
+   - Add Custom Field: Name, Data Type (Text, Number, Date, Boolean, Select), Options list.
+
+--------------------------------------------------------------------------------
+SCREEN 46: DEALS & CURRENCY SETTINGS (/settings?tab=deals)
+--------------------------------------------------------------------------------
+1. Workspace Default Currency Dropdown: USD ($), EUR (€), GBP (£), INR (₹), AUD ($), CAD ($), etc.
+2. Default Pipeline selection.
+
+--------------------------------------------------------------------------------
+SCREEN 47: TEAM MEMBERS & ROLE PERMISSIONS (/settings?tab=members)
+--------------------------------------------------------------------------------
+1. ROLE HIERARCHY MATRIX:
+   - `owner` (Rank 4): Full billing, workspace deletion, transfers.
+   - `admin` (Rank 3): WhatsApp config, team management, templates, automations.
+   - `agent` (Rank 2): Shared inbox, live chat, contacts, deals, broadcasts.
+   - `viewer` (Rank 1): Read-only view of conversations and contacts.
+2. MEMBERS ROSTER TABLE:
+   - Member Avatar, Full Name, Email, Joined Date.
+   - Role Dropdown: Owner and Admin can change teammates' roles inline.
+   - Remove Member action (Trash icon).
+3. "INVITE TEAM MEMBER" MODAL:
+   - Email Address input.
+   - Role Picker (Admin, Agent, Viewer).
+   - Action: "Generate One-Time Invite Link" -> Calls `/api/account/invitations`.
+   - One-Time Reveal: Plaintext URL displayed ONCE with Copy Link button.
+4. PENDING INVITATIONS LIST:
+   - Recipient label, Role, Expiration timestamp.
+   - "Revoke Link" button -> `DELETE /api/account/invitations/:id`.
+
+--------------------------------------------------------------------------------
+SCREEN 48: DEVELOPER API KEYS (/settings?tab=api)
+--------------------------------------------------------------------------------
+1. PURPOSE: Authenticate external CRM / ERP integrations to the public `/api/v1/*` REST API.
+2. ACTIVE KEYS ROSTER: Prefix (e.g. `wacrm_live_...`), Label, Created Date, Revoke button.
+3. "CREATE API KEY" MODAL:
+   - Label input (e.g. "Zapier Webhooks").
+   - Expiration Dropdown: 30 Days | 90 Days | 1 Year | Never.
+   - One-Time Reveal Modal: Displays token with copy button (server stores only SHA-256 hash).
+
+--------------------------------------------------------------------------------
+SCREEN 49: USER PROFILE SETTINGS (/settings?tab=profile)
+--------------------------------------------------------------------------------
+1. FIELDS:
+   - Avatar Photo: Tap to upload new image to `avatars` storage bucket.
+   - Full Name input.
+   - Email Address display.
+2. MUTATION: `supabase.from("profiles").update({ full_name, avatar_url }).eq("user_id", user.id)`.
+
+--------------------------------------------------------------------------------
+SCREEN 50: SECURITY, SESSIONS & DELETE ACCOUNT (/settings?tab=security)
+--------------------------------------------------------------------------------
+1. CHANGE PASSWORD FORM:
+   - Current Password, New Password, Confirm New Password.
+   - Action: `supabase.auth.updateUser({ password })`.
+2. ACTIVE SESSIONS CARD:
+   - Displays browser / device name, IP address, and last active timestamp.
+   - "Revoke Session" button.
+3. DANGER ZONE - DELETE WORKSPACE:
+   - Step 1: Click "Send Deletion Verification Code" -> `POST /api/account/delete/send-code`.
+   - Step 2: Modal prompts for 6-digit email code.
+   - Step 3: Type confirmation phrase: "DELETE MY ACCOUNT PERMANENTLY".
+   - Step 4: Click "Permanently Delete Workspace" -> `POST /api/account/delete/confirm`.
+   - Irreversibly deletes account, contacts, messages, and revokes credentials.
+
+================================================================================
+3. COMPLETE DATABASE SCHEMA & REST API REGISTRY
+================================================================================
+
+3.1 COMPLETE 19-TABLE DATABASE SCHEMA (POSTGRESQL)
+--------------------------------------------------
+All tables enforce Row-Level Security (RLS) policies scoped to `account_id`.
+
+1. `accounts`
+   - id: uuid primary key default gen_random_uuid()
+   - name: text not null
+   - owner_user_id: uuid not null references auth.users(id)
+   - created_at: timestamptz default now()
+   - updated_at: timestamptz default now()
+
+2. `profiles`
+   - id: uuid primary key references auth.users(id) on delete cascade
+   - user_id: uuid not null references auth.users(id) on delete cascade
+   - account_id: uuid not null references accounts(id) on delete cascade
+   - full_name: text
+   - email: text
+   - avatar_url: text
+   - account_role: text check (account_role in ("owner","admin","agent","viewer")) default "agent"
+   - status: text default "active"
+   - expiry_date: timestamptz
+   - created_at: timestamptz default now()
+
+3. `account_invitations`
+   - id: uuid primary key default gen_random_uuid()
+   - account_id: uuid not null references accounts(id) on delete cascade
+   - role: text check (role in ("admin","agent","viewer")) not null
+   - label: text
+   - token_hash: text not null
+   - expires_at: timestamptz not null
+   - accepted_at: timestamptz
+   - created_by_user_id: uuid references auth.users(id)
+
+4. `contacts`
+   - id: uuid primary key default gen_random_uuid()
+   - account_id: uuid not null references accounts(id) on delete cascade
+   - user_id: uuid references auth.users(id)
+   - phone: text not null
+   - phone_normalized: text not null
+   - wa_user_id: text
+   - wa_username: text
+   - name: text
+   - email: text
+   - company: text
+   - avatar_url: text
+   - created_at: timestamptz default now()
+   - updated_at: timestamptz default now()
+   - unique constraint: (account_id, phone_normalized)
+
+5. `tags`
+   - id: uuid primary key default gen_random_uuid()
+   - account_id: uuid not null references accounts(id) on delete cascade
+   - name: text not null
+   - color: text not null
+   - created_at: timestamptz default now()
+
+6. `contact_tags`
+   - id: uuid primary key default gen_random_uuid()
+   - contact_id: uuid not null references contacts(id) on delete cascade
+   - tag_id: uuid not null references tags(id) on delete cascade
+   - unique constraint: (contact_id, tag_id)
+
+7. `custom_fields`
+   - id: uuid primary key default gen_random_uuid()
+   - account_id: uuid not null references accounts(id) on delete cascade
+   - field_name: text not null
+   - field_type: text check (field_type in ("text","number","date","boolean","select")) not null
+   - field_options: jsonb
+   - created_at: timestamptz default now()
+
+8. `contact_custom_values`
+   - id: uuid primary key default gen_random_uuid()
+   - contact_id: uuid not null references contacts(id) on delete cascade
+   - custom_field_id: uuid not null references custom_fields(id) on delete cascade
+   - value: text
+   - unique constraint: (contact_id, custom_field_id)
+
+9. `contact_notes`
+   - id: uuid primary key default gen_random_uuid()
+   - contact_id: uuid not null references contacts(id) on delete cascade
+   - user_id: uuid not null references auth.users(id)
+   - note_text: text not null
+   - created_at: timestamptz default now()
+
+10. `conversations`
+   - id: uuid primary key default gen_random_uuid()
+   - account_id: uuid not null references accounts(id) on delete cascade
+   - contact_id: uuid not null references contacts(id) on delete cascade
+   - status: text check (status in ("open","pending","closed")) default "open"
+   - assigned_agent_id: uuid references profiles(id)
+   - last_message_text: text
+   - last_message_at: timestamptz
+   - unread_count: integer default 0
+   - ai_autoreply_disabled: boolean default false
+   - ai_reply_count: integer default 0
+   - ai_handoff_summary: text
+   - created_at: timestamptz default now()
+   - updated_at: timestamptz default now()
+
+11. `messages`
+   - id: uuid primary key default gen_random_uuid()
+   - conversation_id: uuid not null references conversations(id) on delete cascade
+   - sender_type: text check (sender_type in ("customer","agent","bot")) not null
+   - sender_id: uuid
+   - content_type: text check (content_type in ("text","image","document","audio","video","location","template","interactive","order")) not null
+   - content_text: text
+   - media_url: text
+   - media_type: text
+   - template_name: text
+   - message_id: text
+   - reply_to_message_id: text
+   - interactive_reply_id: text
+   - interactive_payload: jsonb
+   - ai_generated: boolean default false
+   - status: text check (status in ("sending","sent","delivered","read","failed")) default "sending"
+   - error_code: integer
+   - error_title: text
+   - error_details: text
+   - created_at: timestamptz default now()
+
+12. `message_reactions`
+   - id: uuid primary key default gen_random_uuid()
+   - message_id: uuid not null references messages(id) on delete cascade
+   - conversation_id: uuid not null references conversations(id) on delete cascade
+   - actor_type: text check (actor_type in ("customer","agent")) not null
+   - actor_id: uuid
+   - emoji: text not null
+   - created_at: timestamptz default now()
+
+13. `whatsapp_configs`
+   - id: uuid primary key default gen_random_uuid()
+   - account_id: uuid not null references accounts(id) on delete cascade
+   - phone_number_id: text not null
+   - waba_id: text not null
+   - access_token: text not null
+   - verify_token: text
+   - status: text check (status in ("connected","disconnected")) default "disconnected"
+   - registered_at: timestamptz
+   - mirror_inbound_media: boolean default true
+   - catalog_id: text
+   - catalog_name: text
+   - payment_provider: text
+   - payment_config: jsonb
+   - auto_create_payment_link: boolean default false
+
+14. `message_templates`
+   - id: uuid primary key default gen_random_uuid()
+   - account_id: uuid not null references accounts(id) on delete cascade
+   - name: text not null
+   - category: text check (category in ("Marketing","Utility","Authentication")) not null
+   - language: text default "en_US"
+   - header_type: text check (header_type in ("text","image","video","document"))
+   - header_content: text
+   - body_text: text not null
+   - footer_text: text
+   - buttons: jsonb
+   - sample_values: jsonb
+   - status: text default "DRAFT"
+   - meta_template_id: text
+   - rejection_reason: text
+
+15. `pipelines` & `pipeline_stages`
+   - pipelines: id, account_id, name, created_at
+   - pipeline_stages: id, pipeline_id, name, position, color, created_at
+
+16. `deals`
+   - id: uuid primary key default gen_random_uuid()
+   - account_id: uuid not null references accounts(id) on delete cascade
+   - pipeline_id: uuid not null references pipelines(id) on delete cascade
+   - stage_id: uuid not null references pipeline_stages(id) on delete cascade
+   - contact_id: uuid references contacts(id) on delete set null
+   - title: text not null
+   - value: numeric default 0
+   - currency: text default "USD"
+   - expected_close_date: date
+   - status: text check (status in ("open","won","lost")) default "open"
+   - assigned_to: uuid references profiles(id)
+   - notes: text
+
+17. `broadcasts` & `broadcast_recipients`
+   - broadcasts: id, account_id, name, template_name, template_language, variables, audience, scheduled_at, status, total_recipients, sent_count, delivered_count, read_count, replied_count, failed_count.
+   - broadcast_recipients: id, broadcast_id, contact_id, status ("pending","sent","delivered","read","replied","failed"), sent_at, delivered_at, read_at, error_message, whatsapp_message_id.
+
+18. `commerce_orders` & `commerce_products`
+   - commerce_orders: id, account_id, conversation_id, contact_id, order_reference, status ("pending","processing","paid","completed","cancelled"), currency, subtotal, shipping, tax, total_amount, items (jsonb), payment_link_url, paid_at.
+   - commerce_products: id, account_id, catalog_id, retailer_id, name, description, price, currency, image_url, availability ("in stock","out of stock").
+
+19. `automations`, `automation_steps`, `automation_logs`
+   - automations: id, account_id, name, description, trigger_type, trigger_config, is_active, execution_count.
+   - automation_steps: id, automation_id, step_type, step_config, position, parent_step_id, branch ("yes","no").
+   - automation_logs: id, automation_id, contact_id, trigger_event, steps_executed (jsonb), status, error_message.
+
+
+3.2 COMPLETE HTTP REST API ENDPOINT SPECIFICATION
+------------------------------------------------
+All endpoints expect header: `Authorization: Bearer <supabase_session_token>`.
+
+* POST /api/whatsapp/send
+  - Request Body:
+    ```json
+    {
+      "conversationId": "uuid",
+      "text": "Hello world",
+      "mediaKind": "image",
+      "mediaUrl": "https://...",
+      "caption": "Optional caption",
+      "filename": "invoice.pdf",
+      "replyToId": "uuid",
+      "template": { "name": "promo", "language": "en_US", "bodyValues": ["John"] }
+    }
+    ```
+  - Response Body: `{ "ok": true, "messageId": "uuid", "wamid": "wamid.HBg..." }`
+
+* POST /api/whatsapp/react
+  - Request Body: `{ "messageId": "uuid", "emoji": "👍" }`
+  - Response Body: `{ "ok": true }`
+
+* POST /api/whatsapp/broadcast
+  - Request Body:
+    ```json
+    {
+      "name": "Campaign Name",
+      "templateName": "promo_v1",
+      "templateLanguage": "en_US",
+      "variables": { "1": { "type": "field", "value": "name" } },
+      "audience": { "type": "tags", "tagIds": ["uuid"] }
+    }
+    ```
+  - Response Body: `{ "ok": true, "broadcastId": "uuid", "recipientCount": 450 }`
+
+* POST /api/whatsapp/commerce/orders/:id/pay-link
+  - Response Body: `{ "ok": true, "payment_link_url": "https://...", "sent_to_whatsapp": true }`
+
+* POST /api/whatsapp/catalog/sync
+  - Response Body: `{ "ok": true, "synced_count": 84 }`
+
+* POST /api/ai/draft
+  - Request Body: `{ "conversationId": "uuid", "mode": "draft" }`
+  - Response Body: `{ "draft": "Thank you for reaching out..." }`
+
+* POST /api/contacts/:id/tags
+  - Request Body: `{ "tag_id": "uuid" }`
+  - Response Body: `{ "added": true }`
+
+
+3.3 REALTIME WEBSOCKET SUBSCRIPTION CHANNELS
+---------------------------------------------
+Mobile client subscribes on mount:
+```typescript
+// Channel: Messages
+const msgChannel = supabase
+  .channel(`messages:${accountId}`)
+  .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (p) => onNewMessage(p.new))
+  .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (p) => onUpdateMessage(p.new))
+  .subscribe();
+
+// Channel: Conversations
+const convChannel = supabase
+  .channel(`conversations:${accountId}`)
+  .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, (p) => onConvChange(p.new))
+  .subscribe();
+
+// Channel: Presence
+const presenceChannel = supabase.channel(`presence:${accountId}`);
+presenceChannel.subscribe(async (status) => {
+  if (status === "SUBSCRIBED") {
+    await presenceChannel.track({ user_id: currentUserId, online: true });
+  }
+});
+```
+
+
+3.4 NATIVE MOBILE SETUP & VERIFICATION CHECKLIST
+------------------------------------------------
+In `C:\wacrm-app`:
+1. Config: Ensure `src/config/api.ts` contains your live Supabase credentials.
+2. Permissions in AndroidManifest.xml:
+   - `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_IMAGES`, `POST_NOTIFICATIONS`.
+3. Permissions in iOS Info.plist:
+   - `NSCameraUsageDescription`, `NSMicrophoneUsageDescription`, `NSPhotoLibraryUsageDescription`.
+4. Verification Testing Steps:
+   - Test Login & Onboarding routing.
+   - Send and receive live WhatsApp messages.
+   - Verify audio recording and image attachments.
+   - Test 24-hour expiration policy banner.
+   - Test pipeline deal moving and contact tag assignment.
+   - Test broadcast creation wizard.
+
+================================================================================
+                    END OF COMPLETE SPECIFICATION BLUEPRINT                     
+================================================================================

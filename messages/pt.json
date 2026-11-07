@@ -209,7 +209,9 @@
       "assignmentUpdateFailed": "Falha ao atualizar a atribuição",
       "networkError": "erro de rede",
       "documentFallback": "Documento",
-      "you": "Você"
+      "you": "Você",
+      "loadOlderMessages": "Carregar mensagens anteriores",
+      "loadingEarlierMessages": "Carregando mensagens anteriores..."
     },
     "sessionTimer": {
       "expired": "Expirada",

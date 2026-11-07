@@ -172,7 +172,10 @@ export function MessageThread({
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastMessageIdRef = useRef<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -287,12 +290,17 @@ export function MessageThread({
     [conversationId],
   );
 
-  // Fetch messages whenever the selected conversation changes. Kept
+  const PAGE_SIZE = 24;
+
+  // Fetch latest 24 messages whenever the selected conversation changes. Kept
   // separate from the unread-reset effect so that incoming messages
   // arriving while the thread is open don't trigger a full refetch —
   // they only flip hasUnread, which only the reset effect listens to.
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId) {
+      setHasMoreOlder(false);
+      return;
+    }
 
     const supabase = createClient();
     let cancelled = false;
@@ -304,14 +312,19 @@ export function MessageThread({
         .from("messages")
         .select("*")
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
 
       if (cancelled) return;
 
       if (error) {
         console.error("Failed to fetch messages:", error);
       } else {
-        onMessagesLoadedRef.current(data ?? []);
+        const rows = data ?? [];
+        // Reverse descending slice into chronological order for display
+        const chronological = [...rows].reverse();
+        onMessagesLoadedRef.current(chronological);
+        setHasMoreOlder(rows.length === PAGE_SIZE);
       }
 
       if (!cancelled) setLoading(false);
@@ -325,6 +338,62 @@ export function MessageThread({
     // realtime is best-effort and any message events sent while the WS
     // was disconnected or throttled are otherwise lost.
   }, [conversationId, resyncToken]);
+
+  // Load older messages (pagination: 24 at a time when scrolling up)
+  const handleLoadOlder = useCallback(async () => {
+    if (!conversationId || loadingOlder || !hasMoreOlder || messages.length === 0) return;
+    const oldestMsg = messages[0];
+    if (!oldestMsg?.created_at) return;
+
+    setLoadingOlder(true);
+    const scrollEl = scrollRef.current;
+    const prevScrollHeight = scrollEl ? scrollEl.scrollHeight : 0;
+    const prevScrollTop = scrollEl ? scrollEl.scrollTop : 0;
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .lt("created_at", oldestMsg.created_at)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+
+      if (error) {
+        console.error("Failed to fetch older messages:", error);
+        return;
+      }
+
+      const olderRows = data ?? [];
+      if (olderRows.length < PAGE_SIZE) {
+        setHasMoreOlder(false);
+      }
+      if (olderRows.length > 0) {
+        const olderChronological = [...olderRows].reverse();
+        onMessagesLoadedRef.current([...olderChronological, ...messages]);
+        // Maintain scroll anchor so prepending messages doesn't jump the user
+        requestAnimationFrame(() => {
+          if (scrollRef.current) {
+            const newScrollHeight = scrollRef.current.scrollHeight;
+            scrollRef.current.scrollTop = newScrollHeight - prevScrollHeight + prevScrollTop;
+          }
+        });
+      }
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [conversationId, hasMoreOlder, loadingOlder, messages]);
+
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const target = e.currentTarget;
+      if (target.scrollTop <= 40 && hasMoreOlder && !loadingOlder) {
+        void handleLoadOlder();
+      }
+    },
+    [hasMoreOlder, loadingOlder, handleLoadOlder],
+  );
 
   // Reactions fetch — pulls the current state from the DB. Kept separate
   // from the channel subscription below so a `resyncToken` bump just
@@ -433,6 +502,8 @@ export function MessageThread({
   // a quote pulled from conversation A shouldn't bleed into conversation B.
   useEffect(() => {
     setReplyTo(null);
+    lastMessageIdRef.current = null;
+    setHasMoreOlder(false);
   }, [conversationId]);
 
   // Reset the server-side unread_count to 0 whenever an unread count
@@ -456,11 +527,15 @@ export function MessageThread({
       });
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom only when a new latest message arrives,
+  // or on initial conversation load, but NOT when older messages are prepended.
   useEffect(() => {
-    if (scrollRef.current) {
-      const el = scrollRef.current;
-      el.scrollTop = el.scrollHeight;
+    const latestId = messages[messages.length - 1]?.id ?? null;
+    if (latestId !== lastMessageIdRef.current) {
+      lastMessageIdRef.current = latestId;
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
     }
   }, [messages]);
 
@@ -1092,6 +1167,7 @@ export function MessageThread({
       {/* Messages Area */}
       <div
         ref={scrollRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 py-4 scrollbar-hidden"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
@@ -1108,6 +1184,23 @@ export function MessageThread({
           </div>
         ) : (
           <div className="space-y-4">
+            {loadingOlder && (
+              <div className="flex items-center justify-center py-2 text-xs text-muted-foreground">
+                <div className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                {t("loadingEarlierMessages")}
+              </div>
+            )}
+            {hasMoreOlder && !loadingOlder && (
+              <div className="flex justify-center pb-2">
+                <button
+                  type="button"
+                  onClick={() => void handleLoadOlder()}
+                  className="rounded-full bg-muted/60 hover:bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                >
+                  {t("loadOlderMessages")}
+                </button>
+              </div>
+            )}
             {messageGroups.map((group) => (
               <div key={group.date}>
                 {/* Date separator */}

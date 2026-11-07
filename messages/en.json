@@ -209,7 +209,9 @@
       "assignmentUpdateFailed": "Failed to update assignment",
       "networkError": "network error",
       "documentFallback": "Document",
-      "you": "You"
+      "you": "You",
+      "loadOlderMessages": "Load earlier messages",
+      "loadingEarlierMessages": "Loading earlier messages..."
     },
     "sessionTimer": {
       "expired": "Expired",
