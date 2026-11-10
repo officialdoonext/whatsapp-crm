@@ -20,6 +20,8 @@ import { resumeAwaitingReply, runAutomationsForTrigger } from '@/lib/automations
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
+import { enqueueJob } from '@/lib/queue/client'
+import { dispatchInboundPushNotification } from '@/lib/notifications/push-service'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -1061,6 +1063,48 @@ async function processMessage(
     content_type: contentType,
     text: contentText,
   })
+
+  // Automatic push notification dispatch to mobile devices via Railway worker
+  const notifSenderName =
+    contactRecord.name || contactRecord.wa_username || contactRecord.phone || 'Customer'
+  const notifPreviewText =
+    contentText || (contentType !== 'text' ? `Sent a ${contentType}` : 'Sent a message')
+
+  try {
+    const queueRes = await enqueueJob({
+      accountId,
+      queueName: 'messages',
+      jobType: 'inbound_push_notification',
+      priority: 1, // Instant delivery priority
+      idempotencyKey: `push:${conversation.id}:${message.id}`,
+      payload: {
+        accountId,
+        conversationId: conversation.id,
+        contactId: contactRecord.id,
+        contactName: notifSenderName,
+        messageText: notifPreviewText,
+        contentType,
+        messageId: message.id,
+        assignedUserId: conversation.assigned_to || null,
+      },
+    })
+
+    // If enqueueing was not successful, execute direct fallback immediately
+    if (!queueRes || queueRes.error) {
+      await dispatchInboundPushNotification(supabaseAdmin(), {
+        accountId,
+        conversationId: conversation.id,
+        contactId: contactRecord.id,
+        contactName: notifSenderName,
+        messageText: notifPreviewText,
+        contentType,
+        messageId: message.id,
+        assignedUserId: conversation.assigned_to || null,
+      })
+    }
+  } catch (pushErr) {
+    console.error('[webhook] Inbound push notification error:', pushErr)
+  }
 }
 
 async function parseMessageContent(

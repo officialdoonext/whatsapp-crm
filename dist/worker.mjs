@@ -26202,7 +26202,9 @@ var init_en = __esm({
           assignmentUpdateFailed: "Failed to update assignment",
           networkError: "network error",
           documentFallback: "Document",
-          you: "You"
+          you: "You",
+          loadOlderMessages: "Load earlier messages",
+          loadingEarlierMessages: "Loading earlier messages..."
         },
         sessionTimer: {
           expired: "Expired",
@@ -30092,12 +30094,32 @@ async function getCachedWhatsAppConfig(db, accountId, forceRefresh = false) {
       return cached2.config;
     }
   }
-  let { data: config, error } = await db.from("whatsapp_config").select("*").eq("account_id", accountId).maybeSingle();
+  const builder = db.from("whatsapp_config").select("*").eq("account_id", accountId);
+  let config = null;
+  let error = null;
+  if (typeof builder?.maybeSingle === "function") {
+    const res = await builder.maybeSingle();
+    config = res?.data;
+    error = res?.error;
+  }
+  if (!config && typeof builder?.single === "function") {
+    try {
+      const singleRes = await builder.single();
+      if (singleRes?.data) {
+        config = singleRes.data;
+        error = singleRes.error;
+      }
+    } catch {
+    }
+  }
   if (!config) {
-    const fallbackRes = await db.from("whatsapp_config").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
-    if (fallbackRes.data) {
-      console.warn("[config-cache] Falling back to default whatsapp_config row for account:", accountId);
-      config = fallbackRes.data;
+    const query = db.from("whatsapp_config").select("*");
+    if (typeof query.order === "function") {
+      const fallbackRes = await query.order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      if (fallbackRes.data) {
+        console.warn("[config-cache] Falling back to default whatsapp_config row for account:", accountId);
+        config = fallbackRes.data;
+      }
     }
   }
   if (error || !config || !config.access_token) {
@@ -38357,6 +38379,226 @@ var init_mirror_inbound_media = __esm({
   }
 });
 
+// src/lib/notifications/push-service.ts
+var push_service_exports = {};
+__export2(push_service_exports, {
+  dispatchInboundPushNotification: () => dispatchInboundPushNotification,
+  getFirebaseCredentials: () => getFirebaseCredentials,
+  getGoogleAccessToken: () => getGoogleAccessToken,
+  sendPushNotification: () => sendPushNotification
+});
+import crypto3 from "crypto";
+function getFirebaseCredentials() {
+  const envRaw = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  if (envRaw) {
+    try {
+      const parsed = JSON.parse(envRaw);
+      if (parsed.project_id && parsed.client_email && parsed.private_key) {
+        return {
+          project_id: parsed.project_id,
+          client_email: parsed.client_email,
+          private_key: parsed.private_key
+        };
+      }
+    } catch {
+    }
+  }
+  const projectId = process.env.FIREBASE_PROJECT_ID || "menext-app-4c541";
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  if (clientEmail && privateKey) {
+    if (privateKey.includes("\\n")) {
+      privateKey = privateKey.replace(/\\n/g, "\n");
+    }
+    return {
+      project_id: projectId,
+      client_email: clientEmail,
+      private_key: privateKey
+    };
+  }
+  return null;
+}
+async function getGoogleAccessToken(creds) {
+  const now = Math.floor(Date.now() / 1e3);
+  if (cachedAccessToken && cachedAccessToken.expiresAt > now + 300) {
+    return cachedAccessToken.token;
+  }
+  try {
+    const header = Buffer.from(
+      JSON.stringify({ alg: "RS256", typ: "JWT" })
+    ).toString("base64url");
+    const claimSet = Buffer.from(
+      JSON.stringify({
+        iss: creds.client_email,
+        scope: "https://www.googleapis.com/auth/firebase.messaging",
+        aud: "https://oauth2.googleapis.com/token",
+        exp: now + 3600,
+        iat: now
+      })
+    ).toString("base64url");
+    const unsignedJwt = `${header}.${claimSet}`;
+    const signer = crypto3.createSign("RSA-SHA256");
+    signer.update(unsignedJwt);
+    const signature = signer.sign(creds.private_key, "base64url");
+    const signedJwt = `${unsignedJwt}.${signature}`;
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: signedJwt
+      }).toString()
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("[PushService] OAuth2 token exchange failed:", res.status, errText);
+      return null;
+    }
+    const data = await res.json();
+    cachedAccessToken = {
+      token: data.access_token,
+      expiresAt: now + (data.expires_in || 3600)
+    };
+    return cachedAccessToken.token;
+  } catch (err) {
+    console.error("[PushService] Failed to obtain Google OAuth token:", err);
+    return null;
+  }
+}
+async function sendPushNotification(options) {
+  const creds = getFirebaseCredentials();
+  if (!creds) {
+    console.warn(
+      "[PushService] Push notification skipped: FIREBASE_SERVICE_ACCOUNT credentials not set in environment (Project: menext-app-4c541)"
+    );
+    return { success: false, error: "Firebase credentials missing" };
+  }
+  const accessToken = await getGoogleAccessToken(creds);
+  if (!accessToken) {
+    return { success: false, error: "Failed to authenticate with Google FCM" };
+  }
+  const channelId = options.channelId || "inbox_messages_v2";
+  const fcmPayload = {
+    message: {
+      token: options.token,
+      notification: {
+        title: options.title,
+        body: options.body
+      },
+      data: options.data || {},
+      android: {
+        priority: "high",
+        notification: {
+          channel_id: channelId,
+          sound: "default",
+          color: "#00A859",
+          icon: "ic_notification",
+          default_vibrate_timings: true,
+          default_sound: true
+        }
+      }
+    }
+  };
+  try {
+    const res = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${creds.project_id}/messages:send`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(fcmPayload)
+      }
+    );
+    if (res.ok) {
+      return { success: true };
+    }
+    const errorJson = await res.json().catch(() => ({}));
+    const isUnregistered = errorJson.error?.status === "NOT_FOUND" || errorJson.error?.message?.includes("UNREGISTERED") || errorJson.error?.message?.includes("registration token is not valid");
+    console.warn("[PushService] FCM send error response:", res.status, errorJson);
+    return {
+      success: false,
+      unregistered: isUnregistered,
+      error: errorJson.error?.message || `HTTP ${res.status}`
+    };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("[PushService] FCM request exception:", errMsg);
+    return { success: false, error: errMsg };
+  }
+}
+async function dispatchInboundPushNotification(db, params) {
+  const {
+    accountId,
+    conversationId,
+    contactId,
+    contactName,
+    messageText,
+    assignedUserId
+  } = params;
+  try {
+    let query = db.from("profiles").select("id, user_id, fcm_token, full_name, email, account_role, status").eq("account_id", accountId).not("fcm_token", "is", null);
+    const { data: profiles, error } = await query;
+    if (error || !profiles || profiles.length === 0) {
+      return { dispatched: 0, failed: 0 };
+    }
+    let targets = profiles.filter((p) => p.fcm_token && p.status !== "inactive");
+    if (assignedUserId) {
+      const assignedProfile = targets.find((p) => p.user_id === assignedUserId);
+      if (assignedProfile) {
+        targets = targets.filter(
+          (p) => p.user_id === assignedUserId || p.account_role === "owner" || p.account_role === "admin"
+        );
+      }
+    }
+    let dispatched = 0;
+    let failed = 0;
+    const notifTitle = `\u{1F4AC} ${contactName || "New Message"}`;
+    const notifBody = messageText || "Sent a WhatsApp message";
+    const notifData = {
+      type: "chat",
+      screen: "Chat",
+      conversationId,
+      contactId: contactId || "",
+      senderName: contactName || "Customer",
+      channelId: "inbox_messages_v2"
+    };
+    for (const profile of targets) {
+      if (!profile.fcm_token) continue;
+      const result = await sendPushNotification({
+        token: profile.fcm_token,
+        title: notifTitle,
+        body: notifBody,
+        data: notifData,
+        channelId: "inbox_messages_v2"
+      });
+      if (result.success) {
+        dispatched++;
+      } else {
+        failed++;
+        if (result.unregistered) {
+          console.info(`[PushService] Removing expired FCM token for user ${profile.user_id}`);
+          void db.from("profiles").update({ fcm_token: null }).eq("id", profile.id);
+        }
+      }
+    }
+    return { dispatched, failed };
+  } catch (err) {
+    console.error("[PushService] dispatchInboundPushNotification error:", err);
+    return { dispatched: 0, failed: 0 };
+  }
+}
+var cachedAccessToken;
+var init_push_service = __esm({
+  "src/lib/notifications/push-service.ts"() {
+    "use strict";
+    cachedAccessToken = null;
+  }
+});
+
 // src/workers/index.ts
 init_websocket_polyfill();
 
@@ -38722,6 +38964,22 @@ function registerAllHandlers(w) {
     if (mirroredUrl && payload.messageId) {
       await db.from("messages").update({ media_url: mirroredUrl }).eq("id", payload.messageId);
     }
+  });
+  w.registerHandler("inbound_push_notification", async (job) => {
+    const { dispatchInboundPushNotification: dispatchInboundPushNotification2 } = await Promise.resolve().then(() => (init_push_service(), push_service_exports));
+    const { supabaseAdmin: supabaseAdmin4 } = await Promise.resolve().then(() => (init_admin_client(), admin_client_exports));
+    const db = supabaseAdmin4();
+    const payload = job.payload;
+    await dispatchInboundPushNotification2(db, {
+      accountId: payload.accountId,
+      conversationId: payload.conversationId,
+      contactId: payload.contactId,
+      contactName: payload.contactName,
+      messageText: payload.messageText,
+      contentType: payload.contentType,
+      messageId: payload.messageId,
+      assignedUserId: payload.assignedUserId
+    });
   });
   return w;
 }

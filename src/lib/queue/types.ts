@@ -19,7 +19,8 @@ export type JobType =
   | 'delayed_automation_step'
   | 'webhook_event'
   | 'ai_auto_reply'
-  | 'media_mirror';
+  | 'media_mirror'
+  | 'inbound_push_notification';
 
 export interface BaseJobPayload {
   accountId: string;
@@ -86,6 +87,16 @@ export interface MediaMirrorJobPayload extends BaseJobPayload {
   messageId?: string;
 }
 
+export interface InboundPushNotificationJobPayload extends BaseJobPayload {
+  conversationId: string;
+  contactId?: string;
+  contactName: string;
+  messageText: string;
+  contentType?: string;
+  messageId?: string;
+  assignedUserId?: string | null;
+}
+
 export type JobPayloadMap = {
   outbound_message: OutboundMessageJobPayload;
   broadcast_recipient: BroadcastRecipientJobPayload;
@@ -94,6 +105,7 @@ export type JobPayloadMap = {
   webhook_event: WebhookEventJobPayload;
   ai_auto_reply: AiAutoReplyJobPayload;
   media_mirror: MediaMirrorJobPayload;
+  inbound_push_notification: InboundPushNotificationJobPayload;
 };
 
 export interface JobRow<T = Record<string, unknown>> {

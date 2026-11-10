@@ -33,6 +33,7 @@ import type {
   WebhookEventJobPayload,
   AiAutoReplyJobPayload,
   MediaMirrorJobPayload,
+  InboundPushNotificationJobPayload,
 } from '@/lib/queue/types';
 
 /**
@@ -214,6 +215,24 @@ function registerAllHandlers(w: QueueWorker): QueueWorker {
         .update({ media_url: mirroredUrl })
         .eq('id', payload.messageId);
     }
+  });
+
+  w.registerHandler<InboundPushNotificationJobPayload>('inbound_push_notification', async (job) => {
+    const { dispatchInboundPushNotification } = await import('@/lib/notifications/push-service');
+    const { supabaseAdmin } = await import('@/lib/automations/admin-client');
+    const db = supabaseAdmin();
+    const payload = job.payload;
+
+    await dispatchInboundPushNotification(db, {
+      accountId: payload.accountId,
+      conversationId: payload.conversationId,
+      contactId: payload.contactId,
+      contactName: payload.contactName,
+      messageText: payload.messageText,
+      contentType: payload.contentType,
+      messageId: payload.messageId,
+      assignedUserId: payload.assignedUserId,
+    });
   });
 
   return w;
