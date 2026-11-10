@@ -38382,6 +38382,7 @@ var init_mirror_inbound_media = __esm({
 // src/lib/notifications/push-service.ts
 var push_service_exports = {};
 __export2(push_service_exports, {
+  DEFAULT_NOTIFICATION_IMAGE_URL: () => DEFAULT_NOTIFICATION_IMAGE_URL,
   dispatchInboundPushNotification: () => dispatchInboundPushNotification,
   getFirebaseCredentials: () => getFirebaseCredentials,
   getGoogleAccessToken: () => getGoogleAccessToken,
@@ -38480,14 +38481,19 @@ async function sendPushNotification(options) {
     return { success: false, error: "Failed to authenticate with Google FCM" };
   }
   const channelId = options.channelId || "inbox_messages_v2";
+  const imageUrl = options.imageUrl || DEFAULT_NOTIFICATION_IMAGE_URL;
   const fcmPayload = {
     message: {
       token: options.token,
       notification: {
         title: options.title,
-        body: options.body
+        body: options.body,
+        image: imageUrl
       },
-      data: options.data || {},
+      data: {
+        ...options.data || {},
+        imageUrl
+      },
       android: {
         priority: "high",
         notification: {
@@ -38495,6 +38501,7 @@ async function sendPushNotification(options) {
           sound: "default",
           color: "#00A859",
           icon: "ic_notification",
+          image: imageUrl,
           default_vibrate_timings: true,
           default_sound: true
         }
@@ -38558,13 +38565,15 @@ async function dispatchInboundPushNotification(db, params) {
     let failed = 0;
     const notifTitle = `\u{1F4AC} ${contactName || "New Message"}`;
     const notifBody = messageText || "Sent a WhatsApp message";
+    const notifImage = params.imageUrl || DEFAULT_NOTIFICATION_IMAGE_URL;
     const notifData = {
       type: "chat",
       screen: "Chat",
       conversationId,
       contactId: contactId || "",
       senderName: contactName || "Customer",
-      channelId: "inbox_messages_v2"
+      channelId: "inbox_messages_v2",
+      imageUrl: notifImage
     };
     for (const profile of targets) {
       if (!profile.fcm_token) continue;
@@ -38573,7 +38582,8 @@ async function dispatchInboundPushNotification(db, params) {
         title: notifTitle,
         body: notifBody,
         data: notifData,
-        channelId: "inbox_messages_v2"
+        channelId: "inbox_messages_v2",
+        imageUrl: notifImage
       });
       if (result.success) {
         dispatched++;
@@ -38591,10 +38601,11 @@ async function dispatchInboundPushNotification(db, params) {
     return { dispatched: 0, failed: 0 };
   }
 }
-var cachedAccessToken;
+var DEFAULT_NOTIFICATION_IMAGE_URL, cachedAccessToken;
 var init_push_service = __esm({
   "src/lib/notifications/push-service.ts"() {
     "use strict";
+    DEFAULT_NOTIFICATION_IMAGE_URL = "https://ik.imagekit.io/doonext/menext/app-icon.png";
     cachedAccessToken = null;
   }
 });

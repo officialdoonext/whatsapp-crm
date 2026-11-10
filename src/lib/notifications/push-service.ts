@@ -16,12 +16,15 @@ export interface FirebaseServiceAccountCredentials {
   private_key: string;
 }
 
+export const DEFAULT_NOTIFICATION_IMAGE_URL = 'https://ik.imagekit.io/doonext/menext/app-icon.png';
+
 export interface SendPushNotificationOptions {
   token: string;
   title: string;
   body: string;
   data?: Record<string, string>;
   channelId?: string;
+  imageUrl?: string;
 }
 
 export interface InboundMessageNotificationParams {
@@ -33,6 +36,7 @@ export interface InboundMessageNotificationParams {
   contentType?: string;
   messageId?: string;
   assignedUserId?: string | null;
+  imageUrl?: string;
 }
 
 // In-memory token cache to avoid requesting an OAuth2 token on every push
@@ -169,6 +173,7 @@ export async function sendPushNotification(
   }
 
   const channelId = options.channelId || 'inbox_messages_v2';
+  const imageUrl = options.imageUrl || DEFAULT_NOTIFICATION_IMAGE_URL;
 
   const fcmPayload = {
     message: {
@@ -176,8 +181,12 @@ export async function sendPushNotification(
       notification: {
         title: options.title,
         body: options.body,
+        image: imageUrl,
       },
-      data: options.data || {},
+      data: {
+        ...(options.data || {}),
+        imageUrl,
+      },
       android: {
         priority: 'high',
         notification: {
@@ -185,6 +194,7 @@ export async function sendPushNotification(
           sound: 'default',
           color: '#00A859',
           icon: 'ic_notification',
+          image: imageUrl,
           default_vibrate_timings: true,
           default_sound: true,
         },
@@ -284,6 +294,7 @@ export async function dispatchInboundPushNotification(
 
     const notifTitle = `💬 ${contactName || 'New Message'}`;
     const notifBody = messageText || 'Sent a WhatsApp message';
+    const notifImage = params.imageUrl || DEFAULT_NOTIFICATION_IMAGE_URL;
 
     const notifData: Record<string, string> = {
       type: 'chat',
@@ -292,6 +303,7 @@ export async function dispatchInboundPushNotification(
       contactId: contactId || '',
       senderName: contactName || 'Customer',
       channelId: 'inbox_messages_v2',
+      imageUrl: notifImage,
     };
 
     for (const profile of targets) {
@@ -303,6 +315,7 @@ export async function dispatchInboundPushNotification(
         body: notifBody,
         data: notifData,
         channelId: 'inbox_messages_v2',
+        imageUrl: notifImage,
       });
 
       if (result.success) {
