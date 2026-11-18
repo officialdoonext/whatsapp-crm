@@ -521,23 +521,43 @@ export async function sendMessageToConversation(
           )
         : (contentText ?? null);
 
-  const { data: messageRecord, error: msgError } = await db
-    .from('messages')
-    .insert({
-      conversation_id: conversationId,
-      sender_type: 'agent',
-      content_type: messageType,
-      content_text: persistedText,
-      media_url: mediaUrl || null,
-      template_name: templateName || null,
-      interactive_payload:
-        messageType === 'interactive' ? interactivePayload : null,
-      message_id: waMessageId,
-      status: 'sent',
-      reply_to_message_id: replyToMessageId || null,
-    })
-    .select()
-    .single();
+  const lastMessageText =
+    messageType === 'interactive'
+      ? interactivePayloadPreviewText(interactivePayload!)
+      : persistedText || `[${messageType}]`;
+
+  const nowIso = new Date().toISOString();
+
+  // Execute message insert and conversation update concurrently
+  const [insertResult] = await Promise.all([
+    db
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_type: 'agent',
+        content_type: messageType,
+        content_text: persistedText,
+        media_url: mediaUrl || null,
+        template_name: templateName || null,
+        interactive_payload:
+          messageType === 'interactive' ? interactivePayload : null,
+        message_id: waMessageId,
+        status: 'sent',
+        reply_to_message_id: replyToMessageId || null,
+      })
+      .select()
+      .single(),
+    db
+      .from('conversations')
+      .update({
+        last_message_text: lastMessageText,
+        last_message_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('id', conversationId),
+  ]);
+
+  const { data: messageRecord, error: msgError } = insertResult;
 
   if (msgError) {
     console.error('[send-message] error inserting sent message:', msgError);
@@ -548,42 +568,30 @@ export async function sendMessageToConversation(
     );
   }
 
-  const lastMessageText =
-    messageType === 'interactive'
-      ? interactivePayloadPreviewText(interactivePayload!)
-      : persistedText || `[${messageType}]`;
-
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: lastMessageText,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', conversationId);
-
-  // Pause any active Flow run for this contact — the agent stepping in
-  // is the strongest "yield, human is here" signal. Best-effort.
-  try {
-    const { error: pauseErr } = await supabaseAdmin()
-      .from('flow_runs')
-      .update({
-        status: 'paused_by_agent',
-        ended_at: new Date().toISOString(),
-        end_reason: 'agent_replied',
-      })
-      .eq('account_id', accountId)
-      .eq('contact_id', contact.id)
-      .eq('status', 'active');
-    if (pauseErr) {
-      console.error('[flows] pause-on-agent-send failed:', pauseErr.message);
+  // Pause any active Flow run for this contact — non-blocking background task.
+  // Best-effort so it does not delay returning the send response to the user.
+  void (async () => {
+    try {
+      const { error: pauseErr } = await supabaseAdmin()
+        .from('flow_runs')
+        .update({
+          status: 'paused_by_agent',
+          ended_at: nowIso,
+          end_reason: 'agent_replied',
+        })
+        .eq('account_id', accountId)
+        .eq('contact_id', contact.id)
+        .eq('status', 'active');
+      if (pauseErr) {
+        console.error('[flows] pause-on-agent-send failed:', pauseErr.message);
+      }
+    } catch (err) {
+      console.error(
+        '[flows] pause-on-agent-send threw:',
+        err instanceof Error ? err.message : err
+      );
     }
-  } catch (err) {
-    console.error(
-      '[flows] pause-on-agent-send threw:',
-      err instanceof Error ? err.message : err
-    );
-  }
+  })();
 
   return { messageId: messageRecord.id, whatsappMessageId: waMessageId };
 }

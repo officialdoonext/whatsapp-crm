@@ -4,6 +4,7 @@ import { Suspense, useState, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import {
   CONVERSATION_SELECT,
   normalizeConversation,
@@ -36,6 +37,7 @@ function InboxPageInner() {
   const t = useTranslations("Inbox.page");
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { accountId } = useAuth();
   /**
    * `?c=<id>` deep-link support. Used when landing here from the
    * dashboard's recent-conversations list so the right thread opens
@@ -172,45 +174,28 @@ function InboxPageInner() {
     }
   }, []);
 
-  // Check WhatsApp connection status on mount
+  // Check WhatsApp connection status using accountId from auth context
   useEffect(() => {
-    const checkConnection = async () => {
+    if (!accountId) return;
+    let cancelled = false;
+
+    (async () => {
       const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      if (!user) return;
-
-      // whatsapp_config is one-row-per-account post-multi-user, so
-      // the previous `.eq('user_id', user.id)` would miss the row
-      // for any teammate who didn't personally save the config —
-      // the "WhatsApp not connected" banner would show in the
-      // shared inbox even though the admin had it configured.
-      // Resolve account_id via the profile and query by that.
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("account_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      const accountId = profile?.account_id as string | undefined;
-      if (!accountId) {
-        setWhatsappConnected(false);
-        return;
-      }
-
       const { data } = await supabase
         .from("whatsapp_config")
         .select("status")
         .eq("account_id", accountId)
         .maybeSingle();
 
-      setWhatsappConnected(data?.status === "connected");
-    };
+      if (!cancelled) {
+        setWhatsappConnected(data?.status === "connected");
+      }
+    })();
 
-    checkConnection();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
 
   // Handle realtime message events
   const handleMessageEvent = useCallback(
@@ -481,9 +466,13 @@ function InboxPageInner() {
       // clobbers the messages MessageThread just fetched.
       autoSelectedForDeepLinkRef.current = conv.id;
       // Reflect the selection in the URL so a refresh lands the user
-      // back in the same thread, and so copy-paste links work. Use
-      // replace() to avoid polluting browser history with every click.
-      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+      // back in the same thread. Using replaceState avoids an unnecessary
+      // server RSC round-trip while updating browser address bar instantly.
+      if (typeof window !== "undefined" && window.history?.replaceState) {
+        window.history.replaceState(null, "", `/inbox?c=${conv.id}`);
+      } else {
+        router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+      }
     },
     [activeConversation?.id, router]
   );
@@ -498,7 +487,11 @@ function InboxPageInner() {
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
-    router.replace("/inbox", { scroll: false });
+    if (typeof window !== "undefined" && window.history?.replaceState) {
+      window.history.replaceState(null, "", "/inbox");
+    } else {
+      router.replace("/inbox", { scroll: false });
+    }
   }, [router]);
 
 

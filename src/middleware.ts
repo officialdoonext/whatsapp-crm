@@ -5,11 +5,12 @@ import { checkUserAccess } from '@/lib/auth/user-status'
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  // Fast path: verified webhook endpoints and background crons do not use Supabase
+  // Fast path: verified webhook endpoints, background crons, and public v1 APIs do not use Supabase
   // user auth session tokens. Skipping getUser() saves an unnecessary network roundtrip.
   if (
     pathname.startsWith('/api/whatsapp/webhook') ||
-    pathname.startsWith('/api/cron/')
+    pathname.startsWith('/api/cron/') ||
+    pathname.startsWith('/api/v1/')
   ) {
     return NextResponse.next({ request })
   }
@@ -54,20 +55,48 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  // Account status & subscription expiry checks
+  // Account status & subscription expiry checks — cached via cookie to avoid
+  // a blocking database roundtrip on every single page navigation and request.
   let userAccess = { isAllowed: true, reason: null as string | null };
   if (user) {
     let profileData: { status?: string | null; expiry_date?: string | null } | null = null;
     if (typeof (supabase as unknown as { from?: unknown }).from === 'function') {
-      try {
-        const { data } = await supabase
-          .from('profiles')
-          .select('status, expiry_date')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (data) profileData = data;
-      } catch {
-        // fallback to user_metadata
+      let cachedValid = false;
+
+      // Fast-cookie cache check (5-minute TTL)
+      const cachedCookie = request.cookies.get('wacrm_access_cache')?.value;
+      if (cachedCookie) {
+        const [cUserId, cStatus, cExpiry, cTime] = cachedCookie.split('::');
+        const age = Date.now() - Number(cTime || 0);
+        if (cUserId === user.id && age >= 0 && age < 300_000) {
+          profileData = {
+            status: cStatus || null,
+            expiry_date: cExpiry || null,
+          };
+          cachedValid = true;
+        }
+      }
+
+      if (!cachedValid) {
+        try {
+          const { data } = await supabase
+            .from('profiles')
+            .select('status, expiry_date')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          if (data) {
+            profileData = data;
+            const cookieVal = `${user.id}::${data.status || ''}::${data.expiry_date || ''}::${Date.now()}`;
+            supabaseResponse.cookies.set('wacrm_access_cache', cookieVal, {
+              path: '/',
+              httpOnly: true,
+              sameSite: 'lax',
+              maxAge: 300,
+            });
+          }
+        } catch {
+          // fallback to user_metadata
+        }
       }
       userAccess = checkUserAccess(user, profileData);
     } else if (user.user_metadata?.status || user.user_metadata?.expiry_date) {

@@ -95,6 +95,26 @@ export interface AccountContext {
   account: { id: string; name: string };
 }
 
+// In-memory cache for resolved account context (60s TTL).
+// Drastically speeds up high-frequency API endpoints (like sending messages and fetching contacts).
+interface CachedAccountContext {
+  userId: string;
+  accountId: string;
+  role: AccountRole;
+  account: { id: string; name: string };
+  status?: string;
+  expiryDate?: string;
+  cachedAt: number;
+}
+
+const accountContextCache = new Map<string, CachedAccountContext>();
+const CACHE_TTL_MS = 60_000;
+
+export function clearAccountCache(userId?: string) {
+  if (userId) accountContextCache.delete(userId);
+  else accountContextCache.clear();
+}
+
 /**
  * Resolve the caller's user + account + role in one round trip.
  *
@@ -107,7 +127,7 @@ export interface AccountContext {
  * Use `requireRole(min)` instead when the route also needs a
  * minimum-role check — it's a thin wrapper over this.
  */
-export async function getCurrentAccount(): Promise<AccountContext> {
+export async function getCurrentAccount(opts?: { bypassCache?: boolean }): Promise<AccountContext> {
   const supabase = await createClient();
 
   const {
@@ -116,6 +136,25 @@ export async function getCurrentAccount(): Promise<AccountContext> {
   } = await supabase.auth.getUser();
   if (userErr || !user) {
     throw new UnauthorizedError();
+  }
+
+  // Fast path: use in-memory account context cache if fresh (unless in unit test or explicitly bypassed)
+  const isTest = process.env.NODE_ENV === 'test';
+  if (!opts?.bypassCache && !isTest) {
+    const cached = accountContextCache.get(user.id);
+    if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+      const access = checkUserAccess(user, { status: cached.status, expiry_date: cached.expiryDate });
+      if (!access.isAllowed && (user.user_metadata?.status !== undefined || cached.status !== undefined)) {
+        throw new ForbiddenError(access.message);
+      }
+      return {
+        supabase,
+        userId: cached.userId,
+        accountId: cached.accountId,
+        role: cached.role,
+        account: cached.account,
+      };
+    }
   }
 
   const { data, error } = await supabase
@@ -170,6 +209,18 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     // account_id points at no readable account row — orphaned profile
     // or an RLS gap. Same "can't scope this user" outcome as above.
     throw new ForbiddenError(t("notLinked"));
+  }
+
+  if (!isTest) {
+    accountContextCache.set(user.id, {
+      userId: user.id,
+      accountId: data.account_id,
+      role: data.account_role,
+      account: { id: account.id, name: account.name },
+      status: (data as unknown as { status?: string })?.status,
+      expiryDate: (data as unknown as { expiry_date?: string })?.expiry_date,
+      cachedAt: Date.now(),
+    });
   }
 
   return {

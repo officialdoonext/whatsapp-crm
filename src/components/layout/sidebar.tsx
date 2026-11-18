@@ -171,6 +171,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     const content = (
       <Link
         href={item.href}
+        prefetch={true}
         className={cn(
           "flex items-center gap-2.5 rounded-xl text-[13.5px] font-medium transition-all duration-150 relative",
           collapsed
