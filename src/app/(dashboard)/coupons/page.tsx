@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -509,12 +510,11 @@ export default function CouponsPage() {
                 <Label htmlFor="valid-until" className="text-xs font-semibold">
                   Valid Until <span className="text-muted-foreground font-normal">(Optional)</span>
                 </Label>
-                <Input
+                <DatePicker
                   id="valid-until"
-                  type="date"
                   value={validUntil}
-                  onChange={(e) => setValidUntil(e.target.value)}
-                  className="text-xs"
+                  onChange={setValidUntil}
+                  placeholder="Select valid until date"
                 />
               </div>
             </div>

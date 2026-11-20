@@ -14,10 +14,13 @@ export async function GET(request: Request) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    // 1. Primary: query dedicated store_products table
+    // 1. Primary: query dedicated store_products table (fetch only required fields to reduce egress)
     let query = supabase
       .from('store_products')
-      .select('*', { count: 'exact' })
+      .select(
+        'id, account_id, name, short_code, description, category, food_type, list_price, sale_price, tax_config, variants_config, nutrition_table, images, image_url, is_active, created_at, updated_at',
+        { count: 'exact' }
+      )
       .eq('account_id', accountId)
       .order('created_at', { ascending: false })
       .range(from, to);
@@ -36,7 +39,10 @@ export async function GET(request: Request) {
     if (error && error.code === '42P01') {
       let fallbackQuery = supabase
         .from('commerce_products')
-        .select('*', { count: 'exact' })
+        .select(
+          'id, account_id, name, retailer_id, description, category, food_type, list_price, sale_price, tax_type, tax_percentage, cgst, sgst, images, image_url, variants_config, nutrition_data, is_active, created_at, updated_at',
+          { count: 'exact' }
+        )
         .eq('account_id', accountId)
         .eq('catalog_id', 'default') // Exclude all Meta catalog products!
         .order('created_at', { ascending: false })

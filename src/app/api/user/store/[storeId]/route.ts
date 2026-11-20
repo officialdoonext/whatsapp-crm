@@ -2,6 +2,24 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { computeStoreStatus } from '@/lib/commerce/store-status';
 
+// In-Memory TTL Cache to avoid repeated Supabase queries and reduce egress + log ingestion
+interface CacheEntry {
+  data: any;
+  expiresAt: number;
+}
+const storeCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds TTL
+
+// Clean up expired entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of storeCache.entries()) {
+    if (now > entry.expiresAt) {
+      storeCache.delete(key);
+    }
+  }
+}, 5 * 60 * 1000).unref?.();
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ storeId: string }> }
@@ -12,12 +30,31 @@ export async function GET(
       return NextResponse.json({ error: 'Store ID is required' }, { status: 400 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(parseInt(searchParams.get('page') || '1', 10), 1);
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '24', 10), 1), 100);
+    const category = searchParams.get('category')?.trim() || '';
+    const search = searchParams.get('search')?.trim() || '';
+
+    // Cache key incorporates store ID and filter/pagination arguments
+    const cacheKey = `${storeId}:${page}:${limit}:${category}:${search}`;
+    const cached = storeCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      const cachedResponse = NextResponse.json(cached.data);
+      cachedResponse.headers.set(
+        'Cache-Control',
+        'public, max-age=60, s-maxage=60, stale-while-revalidate=300'
+      );
+      cachedResponse.headers.set('X-Store-Cache', 'HIT');
+      return cachedResponse;
+    }
+
     const admin = supabaseAdmin();
 
-    // 1. Fetch store
+    // 1. Fetch only required store fields instead of SELECT *
     const { data: store, error: storeError } = await admin
       .from('stores')
-      .select('*')
+      .select('id, account_id, name, mobile_number, address, logo_url, opening_time, closing_time, working_days, manual_override, expiry_date, payment_gateway_config')
       .eq('id', storeId)
       .maybeSingle();
 
@@ -41,7 +78,7 @@ export async function GET(
     // 3. Compute live status (Online/Offline)
     const status = computeStoreStatus(store);
 
-    // 4. Fetch categories for this account
+    // 4. Fetch categories for this account (only required fields)
     const { data: categories } = await admin
       .from('commerce_categories')
       .select('id, name, slug, description')
@@ -49,15 +86,32 @@ export async function GET(
       .eq('is_active', true)
       .order('name', { ascending: true });
 
-    // 5. Fetch active products for this store's account
-    const { data: products, error: prodError } = await admin
+    // 5. Fetch active products with pagination and only customer-facing fields
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    let prodQuery = admin
       .from('store_products')
-      .select('*')
+      .select(
+        'id, name, short_code, description, category, food_type, list_price, sale_price, images, image_url, variants_config, is_active',
+        { count: 'exact' }
+      )
       .eq('account_id', store.account_id)
       .eq('is_active', true)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
-    // 6. Sanitize payment config to expose only active, valid methods
+    if (category && category !== 'all') {
+      prodQuery = prodQuery.ilike('category', `%${category}%`);
+    }
+
+    if (search) {
+      prodQuery = prodQuery.or(`name.ilike.%${search}%,short_code.ilike.%${search}%`);
+    }
+
+    const { data: products, count: prodCount } = await prodQuery;
+
+    // 6. Sanitize payment config to expose only active, valid public credentials
     const rawPg = (store.payment_gateway_config || {}) as Record<string, any>;
     const codEnabled = Boolean(rawPg.cod?.enabled);
 
@@ -119,7 +173,10 @@ export async function GET(
       hasAnyPaymentConfigured: codEnabled || onlineEnabled,
     };
 
-    return NextResponse.json({
+    const totalProducts = prodCount ?? (products?.length || 0);
+    const totalPages = Math.ceil(totalProducts / limit) || 1;
+
+    const payload = {
       store: {
         id: store.id,
         account_id: store.account_id,
@@ -136,8 +193,28 @@ export async function GET(
       status,
       categories: categories || [],
       products: products || [],
+      pagination: {
+        total: totalProducts,
+        page,
+        totalPages,
+        hasMore: page < totalPages,
+      },
       paymentConfig: publicPaymentConfig,
+    };
+
+    // Store in-memory cache for 60 seconds
+    storeCache.set(cacheKey, {
+      data: payload,
+      expiresAt: Date.now() + CACHE_TTL_MS,
     });
+
+    const response = NextResponse.json(payload);
+    response.headers.set(
+      'Cache-Control',
+      'public, max-age=60, s-maxage=60, stale-while-revalidate=300'
+    );
+    response.headers.set('X-Store-Cache', 'MISS');
+    return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal Server Error';
     return NextResponse.json({ error: message }, { status: 500 });

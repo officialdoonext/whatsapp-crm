@@ -30,6 +30,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -987,14 +988,12 @@ export default function StorePage() {
                 <div className="grid sm:grid-cols-2 gap-5">
                   <div className="space-y-2">
                     <Label htmlFor="open-time" className="text-xs font-semibold">
-                      Opening Time (HH:MM)
+                      Opening Time
                     </Label>
-                    <Input
+                    <TimePicker
                       id="open-time"
-                      type="time"
                       value={openingTime}
-                      onChange={(e) => setOpeningTime(e.target.value)}
-                      className="font-mono text-sm"
+                      onChange={setOpeningTime}
                     />
                     <p className="text-[11px] text-muted-foreground">
                       Store automatically enables at {formatTime12h(openingTime)}
@@ -1003,14 +1002,12 @@ export default function StorePage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="close-time" className="text-xs font-semibold">
-                      Closing / End Time (HH:MM)
+                      Closing / End Time
                     </Label>
-                    <Input
+                    <TimePicker
                       id="close-time"
-                      type="time"
                       value={closingTime}
-                      onChange={(e) => setClosingTime(e.target.value)}
-                      className="font-mono text-sm"
+                      onChange={setClosingTime}
                     />
                     <p className="text-[11px] text-muted-foreground">
                       Store automatically disables at {formatTime12h(closingTime)}
@@ -1860,12 +1857,10 @@ export default function StorePage() {
                 <Label htmlFor="modal-open-time" className="text-xs font-semibold">
                   Opening Time
                 </Label>
-                <Input
+                <TimePicker
                   id="modal-open-time"
-                  type="time"
                   value={openingTime}
-                  onChange={(e) => setOpeningTime(e.target.value)}
-                  className="font-mono text-sm"
+                  onChange={setOpeningTime}
                 />
               </div>
 
@@ -1873,12 +1868,10 @@ export default function StorePage() {
                 <Label htmlFor="modal-close-time" className="text-xs font-semibold">
                   End / Closing Time
                 </Label>
-                <Input
+                <TimePicker
                   id="modal-close-time"
-                  type="time"
                   value={closingTime}
-                  onChange={(e) => setClosingTime(e.target.value)}
-                  className="font-mono text-sm"
+                  onChange={setClosingTime}
                 />
               </div>
             </div>

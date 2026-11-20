@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
+import { getOptimizedImageUrl } from "@/lib/storage/image-optimizer";
 import {
   Store,
   Clock,
@@ -800,7 +801,7 @@ export default function PublicStorefrontPage() {
             <div className="relative h-11 w-11 rounded-xl overflow-hidden border bg-muted shrink-0 flex items-center justify-center shadow-2xs">
               {store.logo_url ? (
                 <Image
-                  src={store.logo_url}
+                  src={getOptimizedImageUrl(store.logo_url, 120)}
                   alt={store.name}
                   fill
                   unoptimized
@@ -964,7 +965,7 @@ export default function PublicStorefrontPage() {
                     <div className="relative h-32 sm:h-44 w-full bg-muted overflow-hidden">
                       {img ? (
                         <Image
-                          src={img}
+                          src={getOptimizedImageUrl(img, 400)}
                           alt={product.name}
                           fill
                           unoptimized

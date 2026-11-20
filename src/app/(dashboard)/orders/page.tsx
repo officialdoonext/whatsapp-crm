@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -490,33 +491,35 @@ export default function OrdersPage() {
 
         {/* Custom Date Range Picker Row (shown when 'custom' is selected) */}
         {datePreset === "custom" && (
-          <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg border bg-muted/40 animate-in fade-in-50 duration-200">
+          <div className="flex flex-wrap items-center gap-3 p-3 rounded-md border bg-muted/40 animate-in fade-in-50 duration-200">
             <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5 text-primary" />
               Custom Date Range:
             </span>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">From:</span>
-              <Input
-                type="date"
-                value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
-                className="h-8 w-38 text-xs bg-background"
-              />
+              <div className="w-38">
+                <DatePicker
+                  value={customStart}
+                  onChange={(val) => setCustomStart(val)}
+                  placeholder="Start date"
+                />
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">To:</span>
-              <Input
-                type="date"
-                value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                className="h-8 w-38 text-xs bg-background"
-              />
+              <div className="w-38">
+                <DatePicker
+                  value={customEnd}
+                  onChange={(val) => setCustomEnd(val)}
+                  placeholder="End date"
+                />
+              </div>
             </div>
             <Button
               size="sm"
               onClick={handleApplyCustomRange}
-              className="h-8 text-xs px-3"
+              className="h-9 px-3 text-xs"
             >
               Apply Filter
             </Button>
