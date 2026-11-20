@@ -28,12 +28,20 @@ import {
   Info,
   DollarSign,
   ShieldCheck,
+  FolderTree,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -784,7 +792,7 @@ export default function PublicStorefrontPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50/60 dark:bg-zinc-950 text-foreground flex flex-col">
-      {/* Top Header */}
+      {/* Top Header: Logo & Store Name ONLY */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b shadow-2xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           {/* Logo & Store Name */}
@@ -804,65 +812,70 @@ export default function PublicStorefrontPage() {
             </div>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="font-bold text-base sm:text-lg truncate">{store.name}</h1>
-                {storeStatus && (
-                  <Badge
-                    variant={storeStatus.isOpen ? "default" : "secondary"}
-                    className={`text-[10px] py-0 px-2 shrink-0 ${
-                      storeStatus.isOpen
-                        ? "bg-emerald-600 text-white"
-                        : "bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+              <h1 className="font-bold text-base sm:text-lg truncate text-foreground">{store.name}</h1>
+              {storeStatus && (
+                <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5">
+                  <span
+                    className={`h-2 w-2 rounded-full inline-block shrink-0 ${
+                      storeStatus.isOpen ? "bg-emerald-500 animate-pulse" : "bg-zinc-400"
                     }`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full mr-1.5 ${
-                        storeStatus.isOpen ? "bg-white animate-pulse" : "bg-zinc-400"
-                      }`}
-                    />
-                    {storeStatus.statusLabel}
-                  </Badge>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground truncate">
-                {storeStatus?.isOpen
-                  ? storeStatus.statusDescription
-                  : `Currently Closed • Hours: ${store.opening_time} - ${store.closing_time}`}
-              </p>
-            </div>
-          </div>
-
-          {/* Cart Header Button */}
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              onClick={() => setIsCartOpen(true)}
-              className="relative gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm text-xs sm:text-sm font-semibold h-10 px-4"
-            >
-              <ShoppingBag className="h-4 w-4" />
-              <span className="hidden sm:inline">Cart</span>
-              {totalCartCount > 0 && (
-                <span className="bg-white text-emerald-700 rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center font-bold text-xs ml-1 shadow-2xs">
-                  {totalCartCount}
-                </span>
+                  />
+                  <span>{storeStatus.statusLabel}</span>
+                </p>
               )}
-            </Button>
+            </div>
           </div>
         </div>
 
-        {/* Search & Food Filter Bar */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-3 pt-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-t">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search items, dishes, snacks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 text-xs bg-muted/30"
-            />
+        {/* Filter & Search Bar: Category Dropdown + Search + Food Type */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-3 pt-2 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-t">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
+            {/* Category Dropdown */}
+            <div className="w-full sm:w-56 shrink-0">
+              <Select
+                value={selectedCategory}
+                onValueChange={(val) => {
+                  if (val) setSelectedCategory(val);
+                }}
+              >
+                <SelectTrigger className="h-9 w-full text-xs bg-muted/40 font-medium">
+                  <FolderTree className="h-3.5 w-3.5 mr-1 text-primary shrink-0" />
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">
+                    All Categories ({products.length})
+                  </SelectItem>
+                  {categories.map((cat) => {
+                    const count = products.filter(
+                      (p) =>
+                        p.category?.toLowerCase() === cat.name.toLowerCase() ||
+                        (p.metadata?.category_id as string) === cat.id
+                    ).length;
+                    return (
+                      <SelectItem key={cat.id} value={cat.name} className="text-xs">
+                        {cat.name} ({count})
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search items, dishes, snacks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-xs bg-muted/30"
+              />
+            </div>
           </div>
 
           {/* Food Type Filter Badges */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 shrink-0">
             <button
               onClick={() => setFoodTypeFilter("all")}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
@@ -909,181 +922,131 @@ export default function PublicStorefrontPage() {
         </div>
       </header>
 
-      {/* Main Storefront Body: Left Categories + Right Items */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* LEFT SIDEBAR: CATEGORIES LIST */}
-        <aside className="md:col-span-1 space-y-3">
-          <div className="p-3 bg-card rounded-xl border shadow-2xs sticky top-28">
-            <h2 className="font-bold text-xs uppercase tracking-wider text-muted-foreground px-2 pb-2 border-b">
-              Categories ({categories.length + 1})
-            </h2>
+      {/* Main Storefront Body: Products Grid (2 columns on Mobile) */}
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 py-5 flex-1 w-full space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-base sm:text-lg text-foreground flex items-center gap-2">
+            <span>{selectedCategory === "all" ? "All Items" : selectedCategory}</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              ({filteredProducts.length} items)
+            </span>
+          </h2>
+        </div>
 
-            <div className="space-y-1 pt-2 max-h-[calc(100vh-200px)] overflow-y-auto">
-              <button
-                onClick={() => setSelectedCategory("all")}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-all ${
-                  selectedCategory === "all"
-                    ? "bg-primary text-primary-foreground shadow-2xs font-bold"
-                    : "hover:bg-muted text-foreground"
-                }`}
-              >
-                <span>All Categories</span>
-                <span className="text-[10px] opacity-75">{products.length}</span>
-              </button>
+        {filteredProducts.length === 0 ? (
+          <Card className="border-dashed border-2 p-12 text-center bg-card">
+            <ShoppingBag className="h-10 w-10 text-muted-foreground mx-auto opacity-50" />
+            <p className="mt-3 text-sm font-semibold">No Items Found</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Try selecting another category or clearing search filters.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
+            {filteredProducts.map((product) => {
+              const img = product.images?.[0] || product.image_url;
+              const variants =
+                product.variants_config ||
+                (Array.isArray(product.metadata?.variants)
+                  ? (product.metadata.variants as ProductVariantItem[])
+                  : []);
+              const hasVariants = variants && variants.length > 0;
+              const salePrice = product.sale_price || product.list_price || 0;
+              const listPrice = product.list_price;
 
-              {categories.map((cat) => {
-                const count = products.filter(
-                  (p) =>
-                    p.category?.toLowerCase() === cat.name.toLowerCase() ||
-                    (p.metadata?.category_id as string) === cat.id
-                ).length;
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.name)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-all ${
-                      selectedCategory === cat.name
-                        ? "bg-primary text-primary-foreground shadow-2xs font-bold"
-                        : "hover:bg-muted text-foreground"
-                    }`}
-                  >
-                    <span className="truncate">{cat.name}</span>
-                    <span className="text-[10px] opacity-75">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </aside>
+              return (
+                <Card
+                  key={product.id}
+                  className="overflow-hidden border shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between bg-card group"
+                >
+                  <div>
+                    {/* Image Thumbnail */}
+                    <div className="relative h-32 sm:h-44 w-full bg-muted overflow-hidden">
+                      {img ? (
+                        <Image
+                          src={img}
+                          alt={product.name}
+                          fill
+                          unoptimized
+                          className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                          <ShoppingBag className="h-8 sm:h-10 w-8 sm:w-10 opacity-30" />
+                        </div>
+                      )}
 
-        {/* RIGHT AREA: ITEMS LIST */}
-        <main className="md:col-span-3 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
-              <span>{selectedCategory === "all" ? "All Items" : selectedCategory}</span>
-              <span className="text-xs font-normal text-muted-foreground">
-                ({filteredProducts.length} items)
-              </span>
-            </h3>
-          </div>
-
-          {filteredProducts.length === 0 ? (
-            <Card className="border-dashed border-2 p-12 text-center bg-card">
-              <ShoppingBag className="h-10 w-10 text-muted-foreground mx-auto opacity-50" />
-              <p className="mt-3 text-sm font-semibold">No Items Found</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Try selecting another category or clearing search filters.
-              </p>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredProducts.map((product) => {
-                const img = product.images?.[0] || product.image_url;
-                const variants =
-                  product.variants_config ||
-                  (Array.isArray(product.metadata?.variants)
-                    ? (product.metadata.variants as ProductVariantItem[])
-                    : []);
-                const hasVariants = variants && variants.length > 0;
-                const salePrice = product.sale_price || product.list_price || 0;
-                const listPrice = product.list_price;
-
-                return (
-                  <Card
-                    key={product.id}
-                    className="overflow-hidden border shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between bg-card group"
-                  >
-                    <div>
-                      {/* Image Thumbnail */}
-                      <div className="relative h-44 w-full bg-muted overflow-hidden">
-                        {img ? (
-                          <Image
-                            src={img}
-                            alt={product.name}
-                            fill
-                            unoptimized
-                            className="object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                        ) : (
-                          <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                            <ShoppingBag className="h-10 w-10 opacity-30" />
-                          </div>
-                        )}
-
-                        {/* Food Type Badge */}
-                        <div className="absolute top-2.5 left-2.5">
+                      {/* Food Type Badge */}
+                      <div className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5">
+                        <span
+                          className={`inline-block h-3.5 w-3.5 rounded-sm border-2 ${
+                            product.food_type === "veg"
+                              ? "border-emerald-600 bg-white"
+                              : product.food_type === "non-veg"
+                              ? "border-red-600 bg-white"
+                              : "border-amber-600 bg-white"
+                          }`}
+                        >
                           <span
-                            className={`inline-block h-3.5 w-3.5 rounded-sm border-2 ${
+                            className={`block h-1.5 w-1.5 rounded-full mx-auto my-[2px] ${
                               product.food_type === "veg"
-                                ? "border-emerald-600 bg-white"
+                                ? "bg-emerald-600"
                                 : product.food_type === "non-veg"
-                                ? "border-red-600 bg-white"
-                                : "border-amber-600 bg-white"
+                                ? "bg-red-600"
+                                : "bg-amber-600"
                             }`}
-                          >
-                            <span
-                              className={`block h-1.5 w-1.5 rounded-full mx-auto my-[2px] ${
-                                product.food_type === "veg"
-                                  ? "bg-emerald-600"
-                                  : product.food_type === "non-veg"
-                                  ? "bg-red-600"
-                                  : "bg-amber-600"
-                              }`}
-                            />
-                          </span>
-                        </div>
+                          />
+                        </span>
                       </div>
-
-                      <CardContent className="p-4 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="font-bold text-sm text-foreground line-clamp-1">
-                            {product.name}
-                          </h4>
-                        </div>
-
-                        {product.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                            {product.description}
-                          </p>
-                        )}
-                      </CardContent>
                     </div>
 
-                    <div className="p-4 pt-0 border-t mt-2 flex items-center justify-between gap-2">
-                      <div>
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="font-bold text-base text-foreground">
-                            ₹{salePrice.toFixed(0)}
-                          </span>
-                          {listPrice && listPrice > salePrice && (
-                            <span className="text-xs text-muted-foreground line-through">
-                              ₹{listPrice.toFixed(0)}
-                            </span>
-                          )}
-                        </div>
-                        {hasVariants && (
-                          <span className="text-[10px] text-muted-foreground">
-                            {variants.length} options available
+                    <CardContent className="p-2.5 sm:p-4 space-y-1 sm:space-y-2">
+                      <h4 className="font-bold text-xs sm:text-sm text-foreground line-clamp-1">
+                        {product.name}
+                      </h4>
+
+                      {product.description && (
+                        <p className="text-[11px] sm:text-xs text-muted-foreground line-clamp-1 sm:line-clamp-2 leading-relaxed">
+                          {product.description}
+                        </p>
+                      )}
+                    </CardContent>
+                  </div>
+
+                  <div className="p-2.5 sm:p-4 pt-0 border-t mt-1.5 sm:mt-2 flex items-center justify-between gap-1.5 sm:gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-bold text-sm sm:text-base text-foreground">
+                          ₹{salePrice.toFixed(0)}
+                        </span>
+                        {listPrice && listPrice > salePrice && (
+                          <span className="text-[10px] sm:text-xs text-muted-foreground line-through">
+                            ₹{listPrice.toFixed(0)}
                           </span>
                         )}
                       </div>
-
-                      <Button
-                        size="sm"
-                        onClick={() => handleAddToCart(product)}
-                        className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-2xs h-8 px-3"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Add
-                      </Button>
+                      {hasVariants && (
+                        <span className="text-[9px] sm:text-[10px] text-muted-foreground block truncate">
+                          {variants.length} options
+                        </span>
+                      )}
                     </div>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </main>
-      </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => handleAddToCart(product)}
+                      className="gap-1 text-[11px] sm:text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-2xs h-7 sm:h-8 px-2 sm:px-3 shrink-0"
+                    >
+                      <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      Add
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </main>
 
       {/* VARIANT PICKER MODAL (WIDER) */}
       <Dialog
@@ -1567,6 +1530,35 @@ export default function PublicStorefrontPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* FLOATING CART BUTTON AT BOTTOM RIGHT CORNER */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          type="button"
+          onClick={() => setIsCartOpen(true)}
+          aria-label="View Cart and Checkout"
+          className="group relative flex items-center gap-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-full p-3.5 sm:px-5 sm:py-3.5 shadow-xl hover:shadow-2xl transition-all duration-200 active:scale-95 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 cursor-pointer"
+        >
+          <div className="relative flex items-center justify-center">
+            <ShoppingBag className="h-6 w-6 transition-transform group-hover:scale-110" />
+            {totalCartCount > 0 && (
+              <span className="absolute -top-2.5 -right-2.5 bg-white text-emerald-700 rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center font-extrabold text-[11px] shadow-md border-2 border-emerald-600">
+                {totalCartCount}
+              </span>
+            )}
+          </div>
+          <div className="hidden sm:flex flex-col items-start leading-tight">
+            <span className="text-xs uppercase tracking-wider font-bold">Cart</span>
+            {totalCartCount > 0 ? (
+              <span className="text-xs font-semibold text-emerald-100">
+                ₹{subtotal.toFixed(0)} • {totalCartCount} {totalCartCount === 1 ? "item" : "items"}
+              </span>
+            ) : (
+              <span className="text-[10px] text-emerald-100">0 items</span>
+            )}
+          </div>
+        </button>
+      </div>
     </div>
   );
 }

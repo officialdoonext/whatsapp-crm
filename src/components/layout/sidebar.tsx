@@ -76,7 +76,6 @@ interface NavItem {
   href: string;
   labelKey: string;
   icon: typeof LayoutDashboard;
-  beta?: boolean;
 }
 
 const mainNavItems: NavItem[] = [
@@ -88,14 +87,14 @@ const mainNavItems: NavItem[] = [
 
 const commerceNavItems: NavItem[] = [
   { href: "/commerce", labelKey: "commerce", icon: ShoppingBag },
-  { href: "/orders", labelKey: "orders", icon: Package, beta: true },
-  { href: "/payments", labelKey: "payments", icon: CreditCard, beta: true },
-  { href: "/store", labelKey: "store", icon: Store, beta: true },
-  { href: "/products", labelKey: "products", icon: Layers, beta: true },
-  { href: "/categories", labelKey: "categories", icon: FolderTree, beta: true },
-  { href: "/variants", labelKey: "variants", icon: SlidersHorizontal, beta: true },
-  { href: "/coupons", labelKey: "coupons", icon: Ticket, beta: true },
-  { href: "/integrations", labelKey: "integrations", icon: Cloud, beta: true },
+  { href: "/orders", labelKey: "orders", icon: Package },
+  { href: "/payments", labelKey: "payments", icon: CreditCard },
+  { href: "/store", labelKey: "store", icon: Store },
+  { href: "/products", labelKey: "products", icon: Layers },
+  { href: "/categories", labelKey: "categories", icon: FolderTree },
+  { href: "/variants", labelKey: "variants", icon: SlidersHorizontal },
+  { href: "/coupons", labelKey: "coupons", icon: Ticket },
+  { href: "/integrations", labelKey: "integrations", icon: Cloud },
 ];
 
 const automationNavItems: NavItem[] = [
@@ -215,11 +214,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {!collapsed && (
           <>
             <span className="flex-1 truncate">{label}</span>
-            {item.beta && (
-              <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider text-amber-500">
-                BETA
-              </span>
-            )}
             {showUnreadDot && (
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
@@ -247,7 +241,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             <TooltipTrigger render={content} />
             <TooltipContent side="right" className="text-xs font-semibold">
               {label}
-              {item.beta ? " (Beta)" : ""}
             </TooltipContent>
           </Tooltip>
         </li>

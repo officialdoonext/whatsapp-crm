@@ -44,8 +44,163 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  startOfDay,
+  endOfDay,
+  subDays,
+  startOfWeek,
+  endOfWeek,
+  subWeeks,
+  startOfMonth,
+  endOfMonth,
+  subMonths,
+  startOfYear,
+  endOfYear,
+  subYears,
+  format,
+} from "date-fns";
 import { toast } from "sonner";
 import type { StoreOrder, StoreOrderStage } from "@/types";
+
+type DatePresetKey =
+  | "today"
+  | "yesterday"
+  | "this_week"
+  | "last_week"
+  | "this_month"
+  | "last_month"
+  | "this_year"
+  | "last_year"
+  | "custom"
+  | "all";
+
+const DATE_PRESETS: { key: DatePresetKey; label: string }[] = [
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "this_week", label: "This Week" },
+  { key: "last_week", label: "Last Week" },
+  { key: "this_month", label: "This Month" },
+  { key: "last_month", label: "Last Month" },
+  { key: "this_year", label: "This Year" },
+  { key: "last_year", label: "Last Year" },
+  { key: "custom", label: "Custom Range" },
+  { key: "all", label: "All Time" },
+];
+
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function getDateRangeFromPreset(
+  preset: DatePresetKey,
+  customStart?: string,
+  customEnd?: string
+): { startDate: string | null; endDate: string | null; label: string } {
+  const now = new Date();
+
+  switch (preset) {
+    case "today": {
+      const s = startOfDay(now);
+      const e = endOfDay(now);
+      return {
+        startDate: s.toISOString(),
+        endDate: e.toISOString(),
+        label: `Today (${format(now, "MMM d, yyyy")})`,
+      };
+    }
+    case "yesterday": {
+      const y = subDays(now, 1);
+      const s = startOfDay(y);
+      const e = endOfDay(y);
+      return {
+        startDate: s.toISOString(),
+        endDate: e.toISOString(),
+        label: `Yesterday (${format(y, "MMM d, yyyy")})`,
+      };
+    }
+    case "this_week": {
+      const s = startOfWeek(now, { weekStartsOn: 1 });
+      const e = endOfWeek(now, { weekStartsOn: 1 });
+      return {
+        startDate: s.toISOString(),
+        endDate: e.toISOString(),
+        label: `This Week (${format(s, "MMM d")} - ${format(e, "MMM d, yyyy")})`,
+      };
+    }
+    case "last_week": {
+      const prev = subWeeks(now, 1);
+      const s = startOfWeek(prev, { weekStartsOn: 1 });
+      const e = endOfWeek(prev, { weekStartsOn: 1 });
+      return {
+        startDate: s.toISOString(),
+        endDate: e.toISOString(),
+        label: `Last Week (${format(s, "MMM d")} - ${format(e, "MMM d, yyyy")})`,
+      };
+    }
+    case "this_month": {
+      const s = startOfMonth(now);
+      const e = endOfMonth(now);
+      return {
+        startDate: s.toISOString(),
+        endDate: e.toISOString(),
+        label: `This Month (${format(now, "MMMM yyyy")})`,
+      };
+    }
+    case "last_month": {
+      const prev = subMonths(now, 1);
+      const s = startOfMonth(prev);
+      const e = endOfMonth(prev);
+      return {
+        startDate: s.toISOString(),
+        endDate: e.toISOString(),
+        label: `Last Month (${format(prev, "MMMM yyyy")})`,
+      };
+    }
+    case "this_year": {
+      const s = startOfYear(now);
+      const e = endOfYear(now);
+      return {
+        startDate: s.toISOString(),
+        endDate: e.toISOString(),
+        label: `This Year (${format(now, "yyyy")})`,
+      };
+    }
+    case "last_year": {
+      const prev = subYears(now, 1);
+      const s = startOfYear(prev);
+      const e = endOfYear(prev);
+      return {
+        startDate: s.toISOString(),
+        endDate: e.toISOString(),
+        label: `Last Year (${format(prev, "yyyy")})`,
+      };
+    }
+    case "custom": {
+      const s = customStart ? startOfDay(parseLocalDate(customStart)).toISOString() : null;
+      const e = customEnd ? endOfDay(parseLocalDate(customEnd)).toISOString() : null;
+      let label = "Custom Range";
+      if (customStart && customEnd) {
+        label = `${customStart} to ${customEnd}`;
+      } else if (customStart) {
+        label = `From ${customStart}`;
+      } else if (customEnd) {
+        label = `Until ${customEnd}`;
+      }
+      return { startDate: s, endDate: e, label };
+    }
+    case "all":
+    default:
+      return { startDate: null, endDate: null, label: "All Time" };
+  }
+}
 
 const STAGES: {
   id: StoreOrderStage;
@@ -111,6 +266,12 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
+  // Date Filter: default to "today" as requested
+  const [datePreset, setDatePreset] = useState<DatePresetKey>("today");
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const [customStart, setCustomStart] = useState<string>(todayStr);
+  const [customEnd, setCustomEnd] = useState<string>(todayStr);
+
   // Order Details Modal
   const [activeOrder, setActiveOrder] = useState<StoreOrder | null>(null);
 
@@ -118,15 +279,30 @@ export default function OrdersPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const fetchOrders = useCallback(
-    async (targetPage = 1, currentStatus = statusFilter, currentSearch = search) => {
+    async (
+      targetPage = 1,
+      currentStatus = statusFilter,
+      currentSearch = search,
+      currentPreset = datePreset,
+      currentCustomStart = customStart,
+      currentCustomEnd = customEnd
+    ) => {
       setLoading(true);
       try {
+        const { startDate, endDate } = getDateRangeFromPreset(
+          currentPreset,
+          currentCustomStart,
+          currentCustomEnd
+        );
+
         const params = new URLSearchParams({
           page: targetPage.toString(),
           limit: "24",
         });
         if (currentStatus !== "all") params.set("status", currentStatus);
         if (currentSearch.trim()) params.set("search", currentSearch.trim());
+        if (startDate) params.set("startDate", startDate);
+        if (endDate) params.set("endDate", endDate);
 
         const res = await fetch(`/api/commerce/orders?${params.toString()}`);
         const data = await res.json();
@@ -143,12 +319,33 @@ export default function OrdersPage() {
         setLoading(false);
       }
     },
-    [statusFilter, search]
+    [statusFilter, search, datePreset, customStart, customEnd]
   );
 
   useEffect(() => {
     fetchOrders(1);
   }, [fetchOrders]);
+
+  const handlePresetChange = (preset: DatePresetKey) => {
+    setDatePreset(preset);
+    if (preset !== "custom") {
+      fetchOrders(1, statusFilter, search, preset, customStart, customEnd);
+    }
+  };
+
+  const handleApplyCustomRange = () => {
+    if (!customStart || !customEnd) {
+      toast.error("Please provide both start and end dates");
+      return;
+    }
+    if (customStart > customEnd) {
+      toast.error("Start date cannot be after end date");
+      return;
+    }
+    fetchOrders(1, statusFilter, search, "custom", customStart, customEnd);
+  };
+
+  const activeDateInfo = getDateRangeFromPreset(datePreset, customStart, customEnd);
 
   const handleUpdateStatus = async (orderId: string, newStatus: StoreOrderStage) => {
     setUpdatingId(orderId);
@@ -219,51 +416,134 @@ export default function OrdersPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-        <Tabs
-          value={statusFilter}
-          onValueChange={(v) => {
-            setStatusFilter(v);
-            fetchOrders(1, v, search);
-          }}
-          className="w-full lg:w-auto"
-        >
-          <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted/60">
-            <TabsTrigger value="all" className="text-xs py-1.5 px-3">
-              All Orders ({total})
-            </TabsTrigger>
-            <TabsTrigger value="created" className="text-xs py-1.5 px-3">
-              Created
-            </TabsTrigger>
-            <TabsTrigger value="preparing" className="text-xs py-1.5 px-3">
-              Preparing
-            </TabsTrigger>
-            <TabsTrigger value="packing" className="text-xs py-1.5 px-3">
-              Packing
-            </TabsTrigger>
-            <TabsTrigger value="packaged" className="text-xs py-1.5 px-3">
-              Package Done
-            </TabsTrigger>
-            <TabsTrigger value="on_the_way" className="text-xs py-1.5 px-3">
-              On the Way
-            </TabsTrigger>
-            <TabsTrigger value="delivered" className="text-xs py-1.5 px-3">
-              Delivered
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        <div className="relative w-full lg:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Order #, name, mobile..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              fetchOrders(1, statusFilter, e.target.value);
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+          <Tabs
+            value={statusFilter}
+            onValueChange={(v) => {
+              setStatusFilter(v);
+              fetchOrders(1, v, search, datePreset, customStart, customEnd);
             }}
-            className="pl-9 text-xs"
-          />
+            className="w-full xl:w-auto"
+          >
+            <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted/60">
+              <TabsTrigger value="all" className="text-xs py-1.5 px-3">
+                All Orders ({total})
+              </TabsTrigger>
+              <TabsTrigger value="created" className="text-xs py-1.5 px-3">
+                Created
+              </TabsTrigger>
+              <TabsTrigger value="preparing" className="text-xs py-1.5 px-3">
+                Preparing
+              </TabsTrigger>
+              <TabsTrigger value="packing" className="text-xs py-1.5 px-3">
+                Packing
+              </TabsTrigger>
+              <TabsTrigger value="packaged" className="text-xs py-1.5 px-3">
+                Package Done
+              </TabsTrigger>
+              <TabsTrigger value="on_the_way" className="text-xs py-1.5 px-3">
+                On the Way
+              </TabsTrigger>
+              <TabsTrigger value="delivered" className="text-xs py-1.5 px-3">
+                Delivered
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
+            {/* Date Preset Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-4 w-4 text-primary shrink-0" />
+              <Select
+                value={datePreset}
+                onValueChange={(v) => handlePresetChange(v as DatePresetKey)}
+              >
+                <SelectTrigger className="h-9 w-40 text-xs bg-background">
+                  <SelectValue placeholder="Date Filter" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATE_PRESETS.map((preset) => (
+                    <SelectItem key={preset.key} value={preset.key} className="text-xs">
+                      {preset.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Order #, name, mobile..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  fetchOrders(1, statusFilter, e.target.value, datePreset, customStart, customEnd);
+                }}
+                className="pl-9 text-xs h-9"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Custom Date Range Picker Row (shown when 'custom' is selected) */}
+        {datePreset === "custom" && (
+          <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg border bg-muted/40 animate-in fade-in-50 duration-200">
+            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5 text-primary" />
+              Custom Date Range:
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">From:</span>
+              <Input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="h-8 w-38 text-xs bg-background"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">To:</span>
+              <Input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="h-8 w-38 text-xs bg-background"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={handleApplyCustomRange}
+              className="h-8 text-xs px-3"
+            >
+              Apply Filter
+            </Button>
+          </div>
+        )}
+
+        {/* Active Filter Indicator Strip */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground px-0.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span>Date Range:</span>
+            <Badge variant="secondary" className="text-[11px] font-normal gap-1 bg-muted/80 border text-foreground">
+              <Calendar className="h-3 w-3 text-primary" />
+              {activeDateInfo.label}
+            </Badge>
+            {datePreset !== "all" && (
+              <button
+                type="button"
+                onClick={() => handlePresetChange("all")}
+                className="text-[11px] text-primary hover:underline"
+              >
+                (View All Time)
+              </button>
+            )}
+          </div>
+          <span>
+            {total} {total === 1 ? "order" : "orders"} found
+          </span>
         </div>
       </div>
 
@@ -281,8 +561,23 @@ export default function OrdersPage() {
           <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
             {search || statusFilter !== "all"
               ? "No orders matched your selected filters."
-              : "When customers place orders from your store link, they will appear here in real-time."}
+              : datePreset === "today"
+              ? "No orders received today yet. Check another date filter (like Yesterday or This Month) or view all historical orders."
+              : `No orders found for ${activeDateInfo.label.toLowerCase()}.`}
           </p>
+          {datePreset !== "all" && (
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePresetChange("all")}
+                className="text-xs gap-1.5"
+              >
+                <RefreshCw className="h-3 w-3" />
+                View All Time Orders
+              </Button>
+            </div>
+          )}
         </Card>
       ) : (
         <div className="space-y-4">

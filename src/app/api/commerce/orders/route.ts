@@ -12,6 +12,8 @@ export async function GET(request: Request) {
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '24', 10), 1), 100);
     const status = searchParams.get('status')?.trim();
     const search = searchParams.get('search')?.trim();
+    const startDate = searchParams.get('startDate')?.trim();
+    const endDate = searchParams.get('endDate')?.trim();
 
     const from = (page - 1) * limit;
     const to = from + limit - 1;
@@ -31,6 +33,14 @@ export async function GET(request: Request) {
       query = query.or(
         `order_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_mobile.ilike.%${search}%`
       );
+    }
+
+    if (startDate) {
+      query = query.gte('created_at', startDate);
+    }
+
+    if (endDate) {
+      query = query.lte('created_at', endDate);
     }
 
     const { data, count, error } = await query;
