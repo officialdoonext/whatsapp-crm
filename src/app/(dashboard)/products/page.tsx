@@ -23,6 +23,7 @@ import {
   Eye,
   Pencil,
   Info,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { compressImageTo80KB } from "@/lib/media/compress-image";
+import { BulkUploadModal } from "@/components/commerce/bulk-upload-modal";
 import type { CommerceVariant, ProductVariantItem, NutritionRow, TaxConfig, StoreProduct } from "@/types";
 
 const PAGE_SIZE = 24;
@@ -54,6 +56,9 @@ export default function ProductsPage() {
 
   // Available variant templates for "Add Variant" picker
   const [availableVariants, setAvailableVariants] = useState<CommerceVariant[]>([]);
+
+  // Bulk Upload modal state
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
 
   // Add / Edit Product modal state
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -460,6 +465,16 @@ export default function ProductsPage() {
           </Button>
 
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsBulkOpen(true)}
+            className="gap-1.5 font-semibold shadow-xs"
+          >
+            <FileSpreadsheet className="size-4 text-primary" />
+            Bulk Upload
+          </Button>
+
+          <Button
             size="sm"
             onClick={() => {
               resetForm();
@@ -560,19 +575,28 @@ export default function ProductsPage() {
                 ? `No products match "${search}". Try searching for another name or code.`
                 : "Create your first product with prices, variants, food types, and optimized photos."}
             </p>
-            {!search && (
+            <div className="mt-5 flex items-center gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkOpen(true)}
+                className="gap-1.5 font-semibold"
+              >
+                <FileSpreadsheet className="size-4 text-primary" />
+                Bulk Upload (50 Sample Products)
+              </Button>
               <Button
                 onClick={() => {
                   resetForm();
                   setIsAddOpen(true);
                 }}
                 size="sm"
-                className="mt-5 gap-1.5 font-semibold"
+                className="gap-1.5 font-semibold"
               >
                 <Plus className="size-4" />
                 Add Product
               </Button>
-            )}
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -1496,6 +1520,13 @@ export default function ProductsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Upload Spreadsheet Modal */}
+      <BulkUploadModal
+        open={isBulkOpen}
+        onOpenChange={setIsBulkOpen}
+        onSuccess={() => fetchProducts(1, search, foodTypeFilter)}
+      />
     </div>
   );
 }
