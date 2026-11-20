@@ -478,6 +478,24 @@ export interface StoreProduct {
   updated_at: string;
 }
 
+export interface StoreProfile {
+  id: string;
+  account_id: string;
+  name: string;
+  mobile_number: string;
+  address?: string | null;
+  logo_url?: string | null;
+  is_online: boolean;
+  manual_override: 'auto' | 'online' | 'offline';
+  opening_time: string;
+  closing_time: string;
+  working_days: string[];
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  is_open_now?: boolean;
+}
+
 export interface CommerceOrderItem {
   retailer_id: string;
   name: string;
