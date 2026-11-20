@@ -234,6 +234,20 @@ export default function PublicStorefrontPage() {
     });
   };
 
+  // Dynamic Cashfree SDK loader (v3)
+  const loadCashfreeSDK = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (typeof window !== "undefined" && (window as unknown as { Cashfree?: unknown }).Cashfree) {
+        return resolve(true);
+      }
+      const script = document.createElement("script");
+      script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
   // Filtered Products
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
@@ -530,7 +544,121 @@ export default function PublicStorefrontPage() {
     if (isOnline) {
       const onlineProvider = paymentConfig.online?.provider || "razorpay";
       const razorpayKey = paymentConfig.online?.key_id;
+      const cashfreeAppId = paymentConfig.online?.app_id;
 
+      // --- A. CASHFREE PAYMENT FLOW ---
+      if (onlineProvider === "cashfree" || (cashfreeAppId && !razorpayKey)) {
+        try {
+          // 1. Create Cashfree checkout session on backend
+          const sessionRes = await fetch("/api/user/payment/cashfree/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              storeId,
+              amount: finalTotal,
+              customerName: customerName.trim(),
+              customerMobile: customerMobile.trim(),
+            }),
+          });
+
+          const sessionData = await sessionRes.json();
+          if (!sessionRes.ok || !sessionData.paymentSessionId) {
+            throw new Error(sessionData.error || "Failed to initialize Cashfree payment session.");
+          }
+
+          // 2. Load Cashfree JS SDK
+          const sdkLoaded = await loadCashfreeSDK();
+          if (!sdkLoaded) {
+            throw new Error("Failed to load Cashfree payment SDK. Please check your network connection.");
+          }
+
+          // 3. Launch Cashfree checkout popup modal
+          const CashfreeFactory = (window as unknown as {
+            Cashfree: (opts: { mode: string }) => {
+              checkout: (opts: { paymentSessionId: string; redirectTarget: string }) => Promise<{
+                error?: { message: string };
+                paymentDetails?: unknown;
+              }>;
+            };
+          }).Cashfree;
+
+          const cashfree = CashfreeFactory({
+            mode: sessionData.env === "production" ? "production" : "sandbox",
+          });
+
+          cashfree.checkout({
+            paymentSessionId: sessionData.paymentSessionId,
+            redirectTarget: "_modal",
+          }).then(async (result) => {
+            if (result?.error) {
+              setPlacingOrder(false);
+              toast.info(result.error.message || "Payment cancelled or dismissed.");
+              return;
+            }
+
+            // 4. Verify payment status with server
+            try {
+              const verifyRes = await fetch("/api/user/payment/cashfree/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  storeId,
+                  orderId: sessionData.orderId,
+                }),
+              });
+              const verifyData = await verifyRes.json();
+
+              // Accept if paid or if paymentDetails were returned
+              if (!verifyData.paid && !result?.paymentDetails) {
+                setPlacingOrder(false);
+                toast.error(`Payment not verified (Status: ${verifyData.orderStatus || "Pending"}). Order has not been placed.`);
+                return;
+              }
+
+              // 5. Place and confirm verified order
+              const res = await fetch("/api/user/orders", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  ...baseOrderPayload,
+                  payment_method: "online",
+                  payment_details: {
+                    provider: "cashfree",
+                    payment_id: sessionData.orderId,
+                    cf_order_id: sessionData.cfOrderId || sessionData.orderId,
+                    cashfree_order_id: sessionData.orderId,
+                  },
+                }),
+              });
+
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || "Failed to record order");
+
+              persistCustomerInfo();
+              setConfirmedOrder(data.order);
+              setCart([]);
+              setAppliedCoupon(null);
+              setIsCheckoutOpen(false);
+              setIsCartOpen(false);
+              toast.success("Cashfree payment verified! Order placed successfully.");
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : "Failed to record order";
+              toast.error(msg);
+            } finally {
+              setPlacingOrder(false);
+            }
+          });
+
+          return;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Failed to initiate Cashfree payment";
+          toast.error(msg);
+          setPlacingOrder(false);
+          return;
+        }
+      }
+
+      // --- B. RAZORPAY PAYMENT FLOW ---
       if (onlineProvider === "razorpay" && razorpayKey) {
         const sdkLoaded = await loadRazorpaySDK();
         if (!sdkLoaded) {
@@ -603,11 +731,11 @@ export default function PublicStorefrontPage() {
         const rzp = new RazorpayClass(options);
         rzp.open();
         return;
-      } else {
-        toast.error("Online payment gateway credentials are not configured by this store.");
-        setPlacingOrder(false);
-        return;
       }
+
+      toast.error("Online payment gateway credentials are not configured by this store.");
+      setPlacingOrder(false);
+      return;
     }
 
     // 2. CASH ON DELIVERY FLOW

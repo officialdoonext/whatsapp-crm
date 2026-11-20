@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/account';
 import { computeStoreStatus } from '@/lib/commerce/store-status';
+import { invalidateStoreCache } from '@/app/api/user/store/[storeId]/route';
 
 export async function GET() {
   try {
@@ -238,6 +239,13 @@ export async function PUT(request: Request) {
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // Invalidate public storefront cache immediately so customers see updated settings
+    try {
+      invalidateStoreCache(existing.id);
+    } catch {
+      // non-fatal
     }
 
     return NextResponse.json({

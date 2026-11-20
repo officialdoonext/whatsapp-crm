@@ -83,9 +83,23 @@ export async function POST(request: Request) {
       if (!hasOnline) {
         return NextResponse.json({ error: 'Online payment is not configured for this store.' }, { status: 400 });
       }
-      if (!payment_details || (!payment_details.payment_id && !payment_details.razorpay_payment_id)) {
+      const hasValidPaymentProof =
+        payment_details &&
+        (payment_details.payment_id ||
+          payment_details.razorpay_payment_id ||
+          payment_details.cf_order_id ||
+          payment_details.order_id);
+
+      if (!hasValidPaymentProof) {
         return NextResponse.json({ error: 'Online payment transaction was not completed or verified.' }, { status: 400 });
       }
+
+      // Ensure normalized payment_id
+      payment_details.payment_id =
+        payment_details.payment_id ||
+        payment_details.razorpay_payment_id ||
+        payment_details.cf_order_id ||
+        payment_details.order_id;
     } else {
       return NextResponse.json({ error: 'Invalid payment method selected.' }, { status: 400 });
     }

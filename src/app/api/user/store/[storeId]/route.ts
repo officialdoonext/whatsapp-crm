@@ -20,6 +20,18 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref?.();
 
+export function invalidateStoreCache(storeId?: string) {
+  if (!storeId) {
+    storeCache.clear();
+    return;
+  }
+  for (const key of Array.from(storeCache.keys())) {
+    if (key.startsWith(`${storeId}:`)) {
+      storeCache.delete(key);
+    }
+  }
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ storeId: string }> }
@@ -115,45 +127,45 @@ export async function GET(
     const rawPg = (store.payment_gateway_config || {}) as Record<string, any>;
     const codEnabled = Boolean(rawPg.cod?.enabled);
 
+    const isOnlineActive = Boolean(
+      rawPg.online?.enabled ??
+      (rawPg.razorpay?.enabled || rawPg.cashfree?.enabled || rawPg.phonepe?.enabled)
+    );
+
+    const rzpKeyId = (rawPg.online?.razorpay?.key_id || rawPg.razorpay?.key_id || '').trim();
+    const cfAppId = (rawPg.online?.cashfree?.app_id || rawPg.cashfree?.app_id || '').trim();
+    const cfEnv = (rawPg.online?.cashfree?.env || rawPg.cashfree?.env || 'sandbox').trim().toLowerCase();
+    const ppMerchantId = (rawPg.online?.phonepe?.merchant_id || rawPg.phonepe?.merchant_id || '').trim();
+    const ppEnv = (rawPg.online?.phonepe?.env || rawPg.phonepe?.env || 'uat').trim();
+
+    const provider = (
+      rawPg.online?.provider ||
+      (cfAppId ? 'cashfree' : ppMerchantId ? 'phonepe' : 'razorpay')
+    ) as 'razorpay' | 'cashfree' | 'phonepe';
+
     let onlineEnabled = false;
     let onlineProvider: 'razorpay' | 'cashfree' | 'phonepe' | null = null;
     let onlineKeyId = '';
     let onlineAppId = '';
     let onlineMerchantId = '';
-    let onlineEnv = 'production';
+    let onlineEnv = 'sandbox';
 
-    if (rawPg.online?.enabled) {
-      const p = rawPg.online.provider;
-      if (p === 'razorpay' && rawPg.online.razorpay?.key_id?.trim()) {
-        onlineEnabled = true;
-        onlineProvider = 'razorpay';
-        onlineKeyId = rawPg.online.razorpay.key_id.trim();
-      } else if (p === 'cashfree' && rawPg.online.cashfree?.app_id?.trim()) {
+    if (isOnlineActive) {
+      if (provider === 'cashfree' && cfAppId) {
         onlineEnabled = true;
         onlineProvider = 'cashfree';
-        onlineAppId = rawPg.online.cashfree.app_id.trim();
-        onlineEnv = rawPg.online.cashfree.env || 'sandbox';
-      } else if (p === 'phonepe' && rawPg.online.phonepe?.merchant_id?.trim()) {
-        onlineEnabled = true;
-        onlineProvider = 'phonepe';
-        onlineMerchantId = rawPg.online.phonepe.merchant_id.trim();
-        onlineEnv = rawPg.online.phonepe.env || 'uat';
-      }
-    } else {
-      if (rawPg.razorpay?.enabled && rawPg.razorpay?.key_id?.trim()) {
+        onlineAppId = cfAppId;
+        onlineEnv = cfEnv;
+      } else if (provider === 'razorpay' && rzpKeyId) {
         onlineEnabled = true;
         onlineProvider = 'razorpay';
-        onlineKeyId = rawPg.razorpay.key_id.trim();
-      } else if (rawPg.cashfree?.enabled && rawPg.cashfree?.app_id?.trim()) {
-        onlineEnabled = true;
-        onlineProvider = 'cashfree';
-        onlineAppId = rawPg.cashfree.app_id.trim();
-        onlineEnv = rawPg.cashfree.env || 'sandbox';
-      } else if (rawPg.phonepe?.enabled && rawPg.phonepe?.merchant_id?.trim()) {
+        onlineKeyId = rzpKeyId;
+        onlineEnv = 'production';
+      } else if (provider === 'phonepe' && ppMerchantId) {
         onlineEnabled = true;
         onlineProvider = 'phonepe';
-        onlineMerchantId = rawPg.phonepe.merchant_id.trim();
-        onlineEnv = rawPg.phonepe.env || 'uat';
+        onlineMerchantId = ppMerchantId;
+        onlineEnv = ppEnv;
       }
     }
 
