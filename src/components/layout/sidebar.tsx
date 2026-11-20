@@ -28,6 +28,12 @@ import {
   X,
   Zap,
   ShoppingBag,
+  Package,
+  CreditCard,
+  Store,
+  Layers,
+  FolderTree,
+  SlidersHorizontal,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
 import {
@@ -71,16 +77,34 @@ interface NavItem {
   beta?: boolean;
 }
 
-const navItems: NavItem[] = [
+const mainNavItems: NavItem[] = [
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
+];
+
+const commerceNavItems: NavItem[] = [
   { href: "/commerce", labelKey: "commerce", icon: ShoppingBag },
+  { href: "/orders", labelKey: "orders", icon: Package, beta: true },
+  { href: "/payments", labelKey: "payments", icon: CreditCard, beta: true },
+  { href: "/store", labelKey: "store", icon: Store, beta: true },
+  { href: "/products", labelKey: "products", icon: Layers, beta: true },
+  { href: "/categories", labelKey: "categories", icon: FolderTree, beta: true },
+  { href: "/variants", labelKey: "variants", icon: SlidersHorizontal, beta: true },
+];
+
+const automationNavItems: NavItem[] = [
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
   { href: "/flows", labelKey: "flows", icon: Workflow },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
+];
+
+const navItems: NavItem[] = [
+  ...mainNavItems,
+  ...commerceNavItems,
+  ...automationNavItems,
 ];
 
 const secondaryNavItems: NavItem[] = [
@@ -292,8 +316,32 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </div>
 
         {/* Primary Navigation list */}
-        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
-          <ul className="space-y-0.5">{navItems.map((item) => renderLink(item))}</ul>
+        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1 scrollbar-2px">
+          <ul className="space-y-0.5">{mainNavItems.map((item) => renderLink(item))}</ul>
+
+          {/* Commerce & Store Section */}
+          <div className="pt-2">
+            {!collapsed ? (
+              <div className="px-3 pb-1 text-[10px] font-bold tracking-wider uppercase text-muted-foreground/70">
+                Commerce & Store
+              </div>
+            ) : (
+              <div className="my-1.5 border-t border-border/50" />
+            )}
+            <ul className="space-y-0.5">{commerceNavItems.map((item) => renderLink(item))}</ul>
+          </div>
+
+          {/* Marketing & Automation Section */}
+          <div className="pt-2">
+            {!collapsed ? (
+              <div className="px-3 pb-1 text-[10px] font-bold tracking-wider uppercase text-muted-foreground/70">
+                Marketing & Automation
+              </div>
+            ) : (
+              <div className="my-1.5 border-t border-border/50" />
+            )}
+            <ul className="space-y-0.5">{automationNavItems.map((item) => renderLink(item))}</ul>
+          </div>
 
           <div className="my-2 border-t border-border/70" />
 

@@ -14,6 +14,29 @@ export function PwaRegistrar() {
       return;
     }
 
+    const isDev =
+      process.env.NODE_ENV === "development" ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    if (isDev) {
+      // In development / localhost, active service workers cache Next.js chunks,
+      // causing normal refreshes to serve outdated bundles and hide newly added pages.
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const reg of registrations) {
+          reg.unregister();
+        }
+      });
+      if ("caches" in window) {
+        caches.keys().then((keys) => {
+          for (const key of keys) {
+            caches.delete(key);
+          }
+        });
+      }
+      return;
+    }
+
     // 1. Capture beforeinstallprompt globally so any component can trigger install
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();

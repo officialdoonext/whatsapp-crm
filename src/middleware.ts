@@ -155,6 +155,12 @@ export async function middleware(request: NextRequest) {
     '/notifications',
     '/settings',
     '/commerce',
+    '/orders',
+    '/payments',
+    '/store',
+    '/products',
+    '/categories',
+    '/variants',
   ]
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
 

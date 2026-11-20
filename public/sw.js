@@ -1,5 +1,5 @@
 // Service Worker for WACRM PWA
-const CACHE_NAME = 'wacrm-sw-v1';
+const CACHE_NAME = 'wacrm-sw-v2';
 
 const STATIC_PRECACHE = [
   '/',
@@ -52,6 +52,8 @@ self.addEventListener('fetch', (event) => {
   // Bypass non-GET requests, API calls, Supabase auth/storage, or WebSocket traffic
   if (
     request.method !== 'GET' ||
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/auth/') ||
     url.protocol === 'ws:' ||

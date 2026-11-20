@@ -381,6 +381,28 @@ export interface CommerceProduct {
   updated_at: string;
 }
 
+export interface CommerceCategory {
+  id: string;
+  account_id: string;
+  name: string;
+  description?: string | null;
+  slug?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface CommerceVariant {
+  id: string;
+  account_id: string;
+  label: string;
+  options: string[];
+  description?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface CommerceOrderItem {
   retailer_id: string;
   name: string;
