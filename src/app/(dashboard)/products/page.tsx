@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import Image from "next/image";
 import {
   Layers,
   Plus,
@@ -17,14 +16,13 @@ import {
   SlidersHorizontal,
   DollarSign,
   Percent,
-  Apple,
-  UtensilsCrossed,
-  Tag,
   Sparkles,
   CheckCircle2,
   FileText,
   AlertCircle,
-  HelpCircle,
+  Eye,
+  Pencil,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,12 +38,12 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { compressImageTo80KB } from "@/lib/media/compress-image";
-import type { CommerceVariant, ProductVariantItem, NutritionRow, TaxConfig } from "@/types";
+import type { CommerceVariant, ProductVariantItem, NutritionRow, TaxConfig, StoreProduct } from "@/types";
 
 const PAGE_SIZE = 24;
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -57,8 +55,9 @@ export default function ProductsPage() {
   // Available variant templates for "Add Variant" picker
   const [availableVariants, setAvailableVariants] = useState<CommerceVariant[]>([]);
 
-  // Add Product modal state
+  // Add / Edit Product modal state
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [productName, setProductName] = useState("");
   const [shortCode, setShortCode] = useState("");
   const [description, setDescription] = useState("");
@@ -91,6 +90,10 @@ export default function ProductsPage() {
   const [selectedFiles, setSelectedFiles] = useState<{ file: File; preview: string; size: number }[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>([]);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+
+  // View Product modal state
+  const [viewProduct, setViewProduct] = useState<StoreProduct | null>(null);
+  const [activePreviewImage, setActivePreviewImage] = useState<string | null>(null);
 
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -230,7 +233,60 @@ export default function ProductsPage() {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Save product flow
+  const handleRemoveExistingImage = (index: number) => {
+    setExistingImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // View Product handler
+  const handleOpenView = (p: StoreProduct) => {
+    setViewProduct(p);
+    const imgs = p.images || [];
+    setActivePreviewImage(imgs[0] || p.image_url || null);
+  };
+
+  // Start Edit handler
+  const handleStartEdit = (p: StoreProduct) => {
+    setEditingProductId(p.id);
+    setProductName(p.name);
+    setShortCode(p.short_code || "");
+    setDescription(p.description || "");
+    setListPrice(p.list_price ? String(p.list_price) : "");
+    setSalePrice(p.sale_price ? String(p.sale_price) : "");
+    setFoodType(p.food_type || "others");
+
+    // Tax
+    const tc = p.tax_config || { inclusive: true };
+    setTaxInclusive(tc.inclusive ?? true);
+    setTaxPercentage(tc.tax_percentage !== undefined ? String(tc.tax_percentage) : "18");
+    setCgstPercentage(tc.cgst !== undefined ? String(tc.cgst) : "9");
+    setSgstPercentage(tc.sgst !== undefined ? String(tc.sgst) : "9");
+
+    // Variants
+    const vars = p.variants_config || (Array.isArray(p.metadata?.variants) ? (p.metadata.variants as ProductVariantItem[]) : []);
+    setProductVariants(vars || []);
+
+    // Nutrition
+    const nut = p.nutrition_table || (Array.isArray(p.metadata?.nutrition_table) ? (p.metadata.nutrition_table as NutritionRow[]) : []);
+    if (nut && nut.length > 0) {
+      setNutritionRows(nut);
+      setShowNutrition(true);
+    } else {
+      setNutritionRows([
+        { heading: "Energy", composition: "" },
+        { heading: "Protein", composition: "" },
+      ]);
+      setShowNutrition(false);
+    }
+
+    // Images
+    setExistingImages(p.images || (p.image_url ? [p.image_url] : []));
+    setSelectedFiles([]);
+
+    // Open editor dialog
+    setIsAddOpen(true);
+  };
+
+  // Save product flow (Add or Edit)
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = productName.trim();
@@ -245,12 +301,11 @@ export default function ProductsPage() {
     try {
       const uploadedUrls: string[] = [...existingImages];
 
-      // 1. Process each selected image: Compress to <= 80KB then upload to ImageKit/Cloudinary
+      // 1. Process each new selected image: Compress to <= 80KB then upload to ImageKit/Cloudinary
       for (let i = 0; i < selectedFiles.length; i++) {
         const item = selectedFiles[i];
         setUploadProgress(`Compressing image ${i + 1} of ${selectedFiles.length} to ≤80KB...`);
 
-        // Compress image to 80KB without losing quality
         const compressedFile = await compressImageTo80KB(item.file);
 
         setUploadProgress(
@@ -276,10 +331,11 @@ export default function ProductsPage() {
         }
       }
 
-      setUploadProgress("Saving product record...");
+      setUploadProgress(editingProductId ? "Updating product record..." : "Saving product record...");
 
       // 2. Prepare payload
       const payload = {
+        id: editingProductId || undefined,
         name: trimmedName,
         short_code: shortCode.trim() || undefined,
         description: description.trim() || undefined,
@@ -299,8 +355,9 @@ export default function ProductsPage() {
         images: uploadedUrls,
       };
 
+      const method = editingProductId ? "PUT" : "POST";
       const res = await fetch("/api/commerce/products", {
-        method: "POST",
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -310,10 +367,14 @@ export default function ProductsPage() {
         throw new Error(data.error || "Failed to save product");
       }
 
-      toast.success(`Product "${trimmedName}" saved successfully!`);
+      toast.success(
+        editingProductId
+          ? `Product "${trimmedName}" updated successfully!`
+          : `Product "${trimmedName}" created successfully!`
+      );
       setIsAddOpen(false);
       resetForm();
-      fetchProducts(1, search, foodTypeFilter);
+      fetchProducts(page, search, foodTypeFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save product");
     } finally {
@@ -323,6 +384,7 @@ export default function ProductsPage() {
   };
 
   const resetForm = () => {
+    setEditingProductId(null);
     setProductName("");
     setShortCode("");
     setDescription("");
@@ -352,6 +414,9 @@ export default function ProductsPage() {
       }
       toast.success("Product deleted");
       setDeleteId(null);
+      if (viewProduct?.id === deleteId) {
+        setViewProduct(null);
+      }
       fetchProducts(page, search, foodTypeFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete product");
@@ -372,13 +437,13 @@ export default function ProductsPage() {
             <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <Layers className="size-5" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Products</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Store Products</h1>
             <Badge variant="outline" className="text-xs font-semibold">
               {total} {total === 1 ? "product" : "products"}
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage your store catalog with multi-variant options, food types, tax calculations, and 80KB optimized media.
+            Manage your store items with multi-variant pricing, food types, tax calculations, and 80KB optimized media.
           </p>
         </div>
 
@@ -488,7 +553,7 @@ export default function ProductsPage() {
               <Layers className="size-7" />
             </div>
             <h3 className="mt-4 text-base font-semibold text-foreground">
-              {search ? "No matching products" : "No products added yet"}
+              {search ? "No matching products" : "No store products added yet"}
             </h3>
             <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">
               {search
@@ -515,7 +580,9 @@ export default function ProductsPage() {
           {products.map((p) => {
             const hasDiscount = p.list_price > p.sale_price && p.sale_price > 0;
             const primaryImg = p.images?.[0] || p.image_url;
-            const variantsCount = p.variants_config?.length || p.metadata?.variants?.length || 0;
+            const variantsCount =
+              p.variants_config?.length ||
+              (Array.isArray(p.metadata?.variants) ? p.metadata.variants.length : 0);
 
             return (
               <Card
@@ -523,7 +590,10 @@ export default function ProductsPage() {
                 className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card shadow-xs transition-all hover:border-primary/40 hover:shadow-md"
               >
                 {/* Product Image Header */}
-                <div className="relative aspect-4/3 w-full overflow-hidden bg-muted/40">
+                <div
+                  onClick={() => handleOpenView(p)}
+                  className="relative aspect-4/3 w-full overflow-hidden bg-muted/40 cursor-pointer"
+                >
                   {primaryImg ? (
                     <img
                       src={primaryImg}
@@ -552,23 +622,58 @@ export default function ProductsPage() {
                     ) : null}
                   </div>
 
-                  {/* Delete button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDeleteId(p.id)}
-                    className="absolute right-2 top-2 size-7 rounded-lg bg-card/80 text-muted-foreground opacity-0 shadow-xs backdrop-blur-xs transition-all hover:bg-destructive hover:text-white group-hover:opacity-100"
-                    title="Delete product"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
+                  {/* Quick Card Action Buttons */}
+                  <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenView(p);
+                      }}
+                      className="size-7 rounded-lg bg-card/90 text-muted-foreground shadow-xs backdrop-blur-xs transition-all hover:bg-primary hover:text-white"
+                      title="View product details"
+                    >
+                      <Eye className="size-3.5" />
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartEdit(p);
+                      }}
+                      className="size-7 rounded-lg bg-card/90 text-muted-foreground shadow-xs backdrop-blur-xs transition-all hover:bg-primary hover:text-white"
+                      title="Edit product"
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteId(p.id);
+                      }}
+                      className="size-7 rounded-lg bg-card/90 text-muted-foreground shadow-xs backdrop-blur-xs transition-all hover:bg-destructive hover:text-white"
+                      title="Delete product"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Details */}
                 <CardContent className="space-y-3 p-3.5">
                   <div>
                     <div className="flex items-center justify-between gap-1">
-                      <h3 className="truncate font-semibold text-foreground text-sm" title={p.name}>
+                      <h3
+                        onClick={() => handleOpenView(p)}
+                        className="truncate font-semibold text-foreground text-sm cursor-pointer hover:text-primary transition-colors"
+                        title={p.name}
+                      >
                         {p.name}
                       </h3>
                       {p.short_code && (
@@ -588,7 +693,7 @@ export default function ProductsPage() {
                   <div className="flex items-baseline justify-between border-t border-border/60 pt-2">
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-base font-bold text-foreground">
-                        ₹{Number(p.sale_price || p.price || 0).toFixed(2)}
+                        ₹{Number(p.sale_price || p.list_price || 0).toFixed(2)}
                       </span>
                       {hasDiscount && (
                         <span className="text-xs text-muted-foreground line-through">
@@ -650,16 +755,221 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Comprehensive Add Product Dialog */}
+      {/* View Product Details Dialog */}
+      <Dialog open={!!viewProduct} onOpenChange={(open) => !open && setViewProduct(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border scrollbar-2px">
+          {viewProduct && (
+            <div className="space-y-5">
+              <DialogHeader>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <DialogTitle className="text-xl font-bold text-foreground">
+                        {viewProduct.name}
+                      </DialogTitle>
+                      {viewProduct.food_type === "veg" ? (
+                        <span className="flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">
+                          <span className="size-2 rounded-full bg-emerald-500" />
+                          VEG
+                        </span>
+                      ) : viewProduct.food_type === "non-veg" ? (
+                        <span className="flex items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-bold text-rose-600">
+                          <span className="size-2 rounded-full bg-rose-500" />
+                          NON-VEG
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {viewProduct.short_code && (
+                      <p className="font-mono text-xs text-muted-foreground">
+                        SKU: <span className="text-foreground font-semibold">{viewProduct.short_code}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const p = viewProduct;
+                      setViewProduct(null);
+                      handleStartEdit(p);
+                    }}
+                    className="gap-1.5 text-xs font-semibold"
+                  >
+                    <Pencil className="size-3.5" />
+                    Edit Product
+                  </Button>
+                </div>
+              </DialogHeader>
+
+              {/* Gallery Image Preview */}
+              {viewProduct.images && viewProduct.images.length > 0 && (
+                <div className="space-y-2">
+                  <div className="relative aspect-16/9 w-full overflow-hidden rounded-xl border border-border bg-muted/30">
+                    <img
+                      src={activePreviewImage || viewProduct.images[0]}
+                      alt={viewProduct.name}
+                      className="size-full object-contain"
+                    />
+                  </div>
+
+                  {viewProduct.images.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-2px">
+                      {viewProduct.images.map((imgUrl, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setActivePreviewImage(imgUrl)}
+                          className={`size-14 shrink-0 overflow-hidden rounded-lg border-2 transition-all cursor-pointer ${
+                            (activePreviewImage || viewProduct.images[0]) === imgUrl
+                              ? "border-primary shadow-xs"
+                              : "border-border opacity-70 hover:opacity-100"
+                          }`}
+                        >
+                          <img src={imgUrl} alt="" className="size-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Description */}
+              {viewProduct.description && (
+                <div className="space-y-1 rounded-xl border border-border/70 bg-muted/20 p-3">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Description
+                  </h4>
+                  <p className="text-xs text-foreground whitespace-pre-line leading-relaxed">
+                    {viewProduct.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Pricing & Tax Summary */}
+              <div className="grid grid-cols-2 gap-3 rounded-xl border border-border/70 bg-muted/20 p-3.5">
+                <div>
+                  <span className="text-[10px] uppercase font-semibold text-muted-foreground">Price</span>
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                    <span className="text-xl font-bold text-foreground">
+                      ₹{Number(viewProduct.sale_price || viewProduct.list_price || 0).toFixed(2)}
+                    </span>
+                    {viewProduct.list_price > viewProduct.sale_price && (
+                      <span className="text-xs text-muted-foreground line-through">
+                        ₹{Number(viewProduct.list_price).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] uppercase font-semibold text-muted-foreground">Tax</span>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">
+                    {viewProduct.tax_config?.inclusive ? (
+                      <span className="text-emerald-600 font-semibold">Tax Inclusive</span>
+                    ) : (
+                      <span>
+                        Exclusive: {viewProduct.tax_config?.tax_percentage || 0}%{" "}
+                        <span className="text-muted-foreground text-[11px]">
+                          (CGST: {viewProduct.tax_config?.cgst || 0}%, SGST: {viewProduct.tax_config?.sgst || 0}%)
+                        </span>
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Configured Variants */}
+              {viewProduct.variants_config && viewProduct.variants_config.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                    Available Variants ({viewProduct.variants_config.length})
+                  </h4>
+                  <div className="overflow-hidden rounded-xl border border-border">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-muted/50 border-b border-border text-[11px] font-semibold text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2">Variant</th>
+                          <th className="px-3 py-2">Value</th>
+                          <th className="px-3 py-2 text-right">List Price</th>
+                          <th className="px-3 py-2 text-right">Sale Price</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {viewProduct.variants_config.map((v, i) => (
+                          <tr key={i} className="hover:bg-muted/20">
+                            <td className="px-3 py-2 font-medium text-foreground">{v.variant_label}</td>
+                            <td className="px-3 py-2">
+                              <Badge variant="outline" className="text-[10px]">
+                                {v.value}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-right text-muted-foreground">
+                              ₹{Number(v.list_price).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-foreground">
+                              ₹{Number(v.sale_price).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Nutrition Information */}
+              {viewProduct.nutrition_table && viewProduct.nutrition_table.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                    Nutritional Information
+                  </h4>
+                  <div className="overflow-hidden rounded-xl border border-border">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-muted/50 border-b border-border text-[11px] font-semibold text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2">Nutrient / Parameter</th>
+                          <th className="px-3 py-2 text-right">Composition</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {viewProduct.nutrition_table.map((row, i) => (
+                          <tr key={i} className="hover:bg-muted/20">
+                            <td className="px-3 py-2 font-medium text-foreground">{row.heading}</td>
+                            <td className="px-3 py-2 text-right text-muted-foreground font-mono">
+                              {row.composition}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="border-t border-border pt-3">
+                <Button variant="outline" size="sm" onClick={() => setViewProduct(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Comprehensive Add / Edit Product Dialog */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
         <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto bg-card border-border scrollbar-2px">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg font-bold">
-              <Layers className="size-5 text-primary" />
-              Add New Product
+              {editingProductId ? <Pencil className="size-5 text-primary" /> : <Layers className="size-5 text-primary" />}
+              {editingProductId ? "Edit Product" : "Add New Product"}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Configure product info, multi-variant pricing, tax, nutrition tables, and 80KB optimized media.
+              {editingProductId
+                ? "Update product details, variant prices, tax, and photo gallery."
+                : "Configure product info, multi-variant pricing, tax, nutrition tables, and 80KB optimized media."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1038,11 +1348,39 @@ export default function ProductsPage() {
                   />
                 </div>
 
-                {/* Previews Grid */}
+                {/* Previews Grid: Existing Images */}
+                {existingImages.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-semibold text-muted-foreground">
+                      Current Images ({existingImages.length})
+                    </span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {existingImages.map((url, idx) => (
+                        <div
+                          key={idx}
+                          className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-muted/40 shadow-xs"
+                        >
+                          <img src={url} alt="existing" className="size-full object-cover" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExistingImage(idx)}
+                              className="size-6 rounded-full bg-destructive text-white flex items-center justify-center hover:scale-110 transition-transform"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Previews Grid: Newly Selected Files */}
                 {selectedFiles.length > 0 && (
                   <div className="space-y-2">
                     <span className="text-[11px] font-semibold text-muted-foreground">
-                      Selected ({selectedFiles.length})
+                      New Images To Upload ({selectedFiles.length})
                     </span>
                     <div className="grid grid-cols-3 gap-2">
                       {selectedFiles.map((item, idx) => (
@@ -1105,10 +1443,10 @@ export default function ProductsPage() {
                 {saving ? (
                   <>
                     <Loader2 className="size-3.5 animate-spin" />
-                    Saving Product...
+                    {editingProductId ? "Updating Product..." : "Saving Product..."}
                   </>
                 ) : (
-                  "Save Product"
+                  editingProductId ? "Save Changes" : "Save Product"
                 )}
               </Button>
             </DialogFooter>
@@ -1124,7 +1462,7 @@ export default function ProductsPage() {
               Delete Product
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Are you sure you want to delete this product? It will be removed from your store catalog.
+              Are you sure you want to delete this product? It will be permanently removed from your store catalog.
             </DialogDescription>
           </DialogHeader>
 

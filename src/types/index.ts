@@ -456,6 +456,28 @@ export interface TaxConfig {
   sgst?: number;
 }
 
+export interface StoreProduct {
+  id: string;
+  account_id: string;
+  name: string;
+  short_code?: string | null;
+  description?: string | null;
+  list_price: number;
+  sale_price: number;
+  price?: number;
+  food_type: 'veg' | 'non-veg' | 'others';
+  images: string[];
+  image_url?: string | null;
+  tax_config: TaxConfig;
+  variants_config: ProductVariantItem[];
+  nutrition_table: NutritionRow[];
+  category?: string | null;
+  is_active: boolean;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CommerceOrderItem {
   retailer_id: string;
   name: string;
