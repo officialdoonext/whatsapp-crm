@@ -403,6 +403,59 @@ export interface CommerceVariant {
   updated_at?: string;
 }
 
+export type StorageProviderType = 'imagekit' | 'cloudinary';
+
+export interface MediaPreferences {
+  images: StorageProviderType;
+  documents: StorageProviderType;
+  videos: StorageProviderType;
+  audio: StorageProviderType;
+}
+
+export interface ImageKitConfig {
+  publicKey?: string;
+  privateKey?: string;
+  urlEndpoint?: string;
+}
+
+export interface CloudinaryConfig {
+  cloudName?: string;
+  apiKey?: string;
+  apiSecret?: string;
+  uploadPreset?: string;
+}
+
+export interface StorageIntegrations {
+  id: string;
+  account_id: string;
+  imagekit_config: ImageKitConfig;
+  cloudinary_config: CloudinaryConfig;
+  media_preferences: MediaPreferences;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NutritionRow {
+  heading: string;
+  composition: string;
+}
+
+export interface ProductVariantItem {
+  id?: string;
+  variant_id?: string;
+  variant_label: string;
+  value: string;
+  list_price: number;
+  sale_price: number;
+}
+
+export interface TaxConfig {
+  inclusive: boolean;
+  tax_percentage?: number;
+  cgst?: number;
+  sgst?: number;
+}
+
 export interface CommerceOrderItem {
   retailer_id: string;
   name: string;

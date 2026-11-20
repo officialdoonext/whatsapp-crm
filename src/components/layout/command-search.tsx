@@ -26,6 +26,7 @@ import {
   Layers,
   FolderTree,
   SlidersHorizontal,
+  Cloud,
 } from "lucide-react";
 import {
   Dialog,
@@ -56,9 +57,10 @@ const SEARCH_ITEMS: SearchEntry[] = [
   { title: "Orders Management", category: "Commerce", href: "/orders", icon: Package, badge: "Coming Soon" },
   { title: "Payments & Invoicing", category: "Commerce", href: "/payments", icon: CreditCard, badge: "Coming Soon" },
   { title: "WhatsApp Storefront", category: "Commerce", href: "/store", icon: Store, badge: "Coming Soon" },
-  { title: "Products Inventory", category: "Commerce", href: "/products", icon: Layers, badge: "Coming Soon" },
-  { title: "Product Categories", category: "Commerce", href: "/categories", icon: FolderTree, badge: "Coming Soon" },
-  { title: "Product Variants & SKUs", category: "Commerce", href: "/variants", icon: SlidersHorizontal, badge: "Coming Soon" },
+  { title: "Products Inventory", category: "Commerce", href: "/products", icon: Layers },
+  { title: "Product Categories", category: "Commerce", href: "/categories", icon: FolderTree },
+  { title: "Product Variants & SKUs", category: "Commerce", href: "/variants", icon: SlidersHorizontal },
+  { title: "Media Integrations (ImageKit & Cloudinary)", category: "Commerce", href: "/integrations", icon: Cloud },
   { title: "Catalog & Payments", category: "Settings", href: "/settings?tab=commerce", icon: ShoppingBag },
   { title: "Broadcast Campaigns", category: "Marketing", href: "/broadcasts", icon: Radio },
   { title: "Automations", category: "Automation", href: "/automations", icon: Zap },
