@@ -22,7 +22,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   const isFullScreenCanvas =
     pathname?.startsWith("/automations/new") ||
-    (pathname?.startsWith("/automations/") && pathname?.endsWith("/edit"));
+    (pathname?.includes("/automations/") && pathname?.includes("/edit"));
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).

@@ -1624,6 +1624,7 @@ export interface ServerStepNode {
 }
 
 export function fromServerSteps(nodes: ServerStepNode[]): BuilderStep[] {
+  if (!Array.isArray(nodes)) return []
   return nodes.map((n) => ({
     cid: cid(),
     step_type: n.step_type as AutomationStepType,

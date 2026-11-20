@@ -37,12 +37,18 @@ export async function GET(
 ) {
   const { id } = await params
 
+  if (!id || id === 'undefined') {
+    return NextResponse.json({ error: 'Valid automation ID is required' }, { status: 400 })
+  }
+
   // Reading is open to any member (`automations_select` has no role
   // floor) but is still account-scoped.
   let accountId: string
+  let userId: string
   try {
     const ctx = await getCurrentAccount()
     accountId = ctx.accountId
+    userId = ctx.userId
   } catch (err) {
     return toErrorResponse(err)
   }
@@ -52,14 +58,25 @@ export async function GET(
     .from('automations')
     .select('*')
     .eq('id', id)
-    .eq('account_id', accountId)
+    .or(`account_id.eq.${accountId},user_id.eq.${userId}`)
     .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!automation) return NextResponse.json({ error: t('common.notFound') }, { status: 404 })
 
-  const steps = await loadStepsTree(id)
-  return NextResponse.json({ automation, steps })
+  // Auto-backfill account_id if it was missing on legacy automation
+  if (!automation.account_id && accountId) {
+    await admin.from('automations').update({ account_id: accountId }).eq('id', automation.id)
+    automation.account_id = accountId
+  }
+
+  try {
+    const steps = await loadStepsTree(id)
+    return NextResponse.json({ automation, steps })
+  } catch (err: unknown) {
+    console.error('[loadStepsTree error]:', err)
+    return NextResponse.json({ automation, steps: [] })
+  }
 }
 
 export async function PATCH(
@@ -68,13 +85,19 @@ export async function PATCH(
 ) {
   const { id } = await params
 
+  if (!id || id === 'undefined') {
+    return NextResponse.json({ error: 'Valid automation ID is required' }, { status: 400 })
+  }
+
   // Editing an automation is a write — the RLS automations_update policy
   // requires `agent`, but this route mutates via the service-role client
   // which bypasses RLS, so enforce the role here.
   let accountId: string
+  let userId: string
   try {
     const ctx = await requireRole('agent')
     accountId = ctx.accountId
+    userId = ctx.userId
   } catch (err) {
     return toErrorResponse(err)
   }
@@ -90,7 +113,7 @@ export async function PATCH(
     .from('automations')
     .select('id, account_id, is_active, trigger_type, trigger_config')
     .eq('id', id)
-    .eq('account_id', accountId)
+    .or(`account_id.eq.${accountId},user_id.eq.${userId}`)
     .maybeSingle()
   if (!existing) {
     return NextResponse.json({ error: t('common.notFound') }, { status: 404 })
@@ -139,7 +162,6 @@ export async function PATCH(
       .from('automations')
       .update(update)
       .eq('id', id)
-      .eq('account_id', accountId)
     if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
   }
 
@@ -160,18 +182,31 @@ export async function DELETE(
   // Deleting an automation is a write — enforce `agent` (the service-role
   // client below bypasses the agent-gated automations_delete RLS).
   let accountId: string
+  let userId: string
   try {
     const ctx = await requireRole('agent')
     accountId = ctx.accountId
+    userId = ctx.userId
   } catch (err) {
     return toErrorResponse(err)
   }
 
-  const { error } = await supabaseAdmin()
+  const admin = supabaseAdmin()
+  const { data: existing } = await admin
+    .from('automations')
+    .select('id')
+    .eq('id', id)
+    .or(`account_id.eq.${accountId},user_id.eq.${userId}`)
+    .maybeSingle()
+
+  if (!existing) {
+    return NextResponse.json({ error: t('common.notFound') }, { status: 404 })
+  }
+
+  const { error } = await admin
     .from('automations')
     .delete()
     .eq('id', id)
-    .eq('account_id', accountId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
