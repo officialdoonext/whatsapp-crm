@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -17,7 +17,12 @@ import { BrowserNotificationsListener } from "@/components/notifications/browser
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const { user, loading, profileLoading, canAccessApp, accessReason } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const t = useTranslations("DashboardShell");
+
+  const isFullScreenCanvas =
+    pathname?.startsWith("/automations/new") ||
+    (pathname?.startsWith("/automations/") && pathname?.endsWith("/edit"));
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).
@@ -44,6 +49,16 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   }
 
   if (!user || !canAccessApp) return null;
+
+  if (isFullScreenCanvas) {
+    return (
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
+        <PresenceHeartbeat />
+        <BrowserNotificationsListener />
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">

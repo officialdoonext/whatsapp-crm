@@ -472,9 +472,10 @@ function ConversationItem({
 
   return (
     <button
+      data-allow-tall="true"
       onClick={handleClick}
       className={cn(
-        "group relative flex w-full items-start gap-3 px-3.5 py-3 text-left transition-all duration-150 border-b border-border/30",
+        "group relative flex w-full h-auto items-start gap-3 px-3.5 py-3 text-left transition-all duration-150 border-b border-border/30",
         isActive
           ? "bg-primary/10 dark:bg-primary/15 border-l-[3.5px] border-l-primary"
           : "hover:bg-muted/50 border-l-[3.5px] border-l-transparent"

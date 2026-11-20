@@ -719,7 +719,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   }
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background">
+    <div className="fixed inset-0 z-50 flex flex-col bg-background">
       {/* Top bar. At sub-sm widths the "Active" label is hidden and the
           switch moves to the right of the save button, so the name input
           gets maximum width. */}
@@ -810,9 +810,10 @@ function TriggerCard({
     <div className="z-10 w-full max-w-[320px] sm:w-80">
       <div className="rounded-lg border border-border border-l-4 border-l-blue-500 bg-card shadow-lg">
         <button
+          data-allow-tall="true"
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-center gap-3 px-4 py-3 text-left"
+          className="flex w-full h-auto items-center gap-3 px-4 py-3 text-left"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-500/10 text-blue-400">
             <Zap className="h-4 w-4" />
@@ -1123,9 +1124,10 @@ function StepRenderer({
           )}
         >
           <button
+            data-allow-tall="true"
             type="button"
             onClick={() => props.setExpandedId(expanded ? null : step.cid)}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left"
+            className="flex w-full h-auto items-center gap-3 px-4 py-3 text-left"
           >
             <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden />
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">

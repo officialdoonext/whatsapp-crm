@@ -389,7 +389,7 @@ export default function OrdersPage() {
   const formatCurrency = (amt: number) => `₹${Number(amt || 0).toFixed(2)}`;
 
   return (
-    <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-5">
         <div>
@@ -427,7 +427,7 @@ export default function OrdersPage() {
             }}
             className="w-full xl:w-auto"
           >
-            <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted/60">
+            <TabsList className="flex flex-nowrap overflow-x-auto max-w-full h-auto gap-1 p-1 bg-muted/60">
               <TabsTrigger value="all" className="text-xs py-1.5 px-3">
                 All Orders ({total})
               </TabsTrigger>

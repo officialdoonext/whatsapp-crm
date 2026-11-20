@@ -386,16 +386,21 @@ html[data-theme="rose"] {
   border-radius: 6px !important;
 }
 
-/* Button and Input maximum height: 36px only with proportional text */
-button:not([data-allow-tall]),
+/* Button and Input maximum height: 36px only for standard interactive controls */
 input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
 select,
-[data-slot="button"],
 [data-slot="input"],
 [data-slot="select-trigger"] {
-  max-height: 36px !important;
+  max-height: 36px;
   font-size: 0.875rem;
   line-height: 1.25rem;
+}
+
+/* Standard inline action buttons capped at 36px.
+   Card buttons, composite layouts, flex-col buttons, and list items scale naturally. */
+button:not([data-allow-tall]):not([class*="h-auto"]):not([class*="h-full"]):not([class*="min-h-"]):not([class*="flex-col"]):not([class*="p-3"]):not([class*="p-4"]):not([class*="p-5"]):not([class*="p-6"]):not([class*="card"]):not([class*="group"]):not([class*="block"]),
+[data-slot="button"]:not([data-allow-tall]):not([class*="h-auto"]):not([class*="h-full"]):not([class*="min-h-"]):not([class*="flex-col"]):not([class*="p-3"]):not([class*="p-4"]):not([class*="p-5"]):not([class*="p-6"]) {
+  max-height: 36px;
 }
 
 /* Number inputs: remove top/down stepper buttons */
