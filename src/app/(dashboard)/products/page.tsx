@@ -781,7 +781,7 @@ export default function ProductsPage() {
 
       {/* View Product Details Dialog */}
       <Dialog open={!!viewProduct} onOpenChange={(open) => !open && setViewProduct(null)}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border scrollbar-2px">
+        <DialogContent className="sm:max-w-3xl md:max-w-4xl max-h-[90vh] overflow-y-auto bg-card border-border scrollbar-2px">
           {viewProduct && (
             <div className="space-y-5">
               <DialogHeader>

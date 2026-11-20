@@ -478,6 +478,69 @@ export interface StoreProduct {
   updated_at: string;
 }
 
+export interface PaymentGatewayConfig {
+  cod?: {
+    enabled: boolean;
+    min_order_value?: number;
+  };
+  online?: {
+    enabled: boolean;
+    provider: 'razorpay' | 'cashfree' | 'phonepe';
+    razorpay?: {
+      key_id: string;
+      key_secret: string;
+    };
+    cashfree?: {
+      app_id: string;
+      secret_key: string;
+      env: 'sandbox' | 'production';
+    };
+    phonepe?: {
+      merchant_id: string;
+      salt_key: string;
+      salt_index: string;
+      env: 'uat' | 'production';
+    };
+  };
+  razorpay?: {
+    enabled: boolean;
+    key_id: string;
+    key_secret: string;
+  };
+  cashfree?: {
+    enabled: boolean;
+    app_id: string;
+    secret_key: string;
+    env: 'sandbox' | 'production';
+  };
+  phonepe?: {
+    enabled: boolean;
+    merchant_id: string;
+    salt_key: string;
+    salt_index: string;
+    env: 'uat' | 'production';
+  };
+}
+
+export type StoreOrderStage =
+  | 'created'
+  | 'preparing'
+  | 'packing'
+  | 'packaged'
+  | 'on_the_way'
+  | 'delivered'
+  | 'cancelled';
+
+export interface NotificationTemplateConfig {
+  created?: string;
+  preparing?: string;
+  packing?: string;
+  packaged?: string;
+  on_the_way?: string;
+  delivered?: string;
+  cancelled?: string;
+}
+
 export interface StoreProfile {
   id: string;
   account_id: string;
@@ -490,10 +553,91 @@ export interface StoreProfile {
   opening_time: string;
   closing_time: string;
   working_days: string[];
+  payment_gateway_config?: PaymentGatewayConfig;
+  notification_templates?: NotificationTemplateConfig;
+  expiry_date?: string | null;
   metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
   is_open_now?: boolean;
+}
+
+export interface StoreCoupon {
+  id: string;
+  account_id: string;
+  code: string;
+  coupon_type: 'order' | 'product';
+  discount_type: 'percentage' | 'flat';
+  discount_value: number;
+  min_order_value: number;
+  max_discount?: number | null;
+  applicable_product_ids?: string[];
+  applicable_category_ids?: string[];
+  valid_from?: string;
+  valid_until?: string | null;
+  usage_limit?: number | null;
+  used_count: number;
+  is_active: boolean;
+  description?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoreOrderItem {
+  product_id: string;
+  name: string;
+  short_code?: string;
+  variant_id?: string;
+  variant_name?: string;
+  quantity: number;
+  unit_price: number;
+  sale_price: number;
+  total_price: number;
+  food_type?: 'veg' | 'non-veg' | 'others';
+  image_url?: string;
+}
+
+export interface StoreOrderAddress {
+  fullName: string;
+  mobileNumber: string;
+  streetAddress: string;
+  flatNumber?: string;
+  landmark?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  latitude?: number;
+  longitude?: number;
+  rawAddress?: string;
+}
+
+export interface StoreOrder {
+  id: string;
+  order_number: string;
+  account_id: string;
+  store_id: string;
+  customer_name: string;
+  customer_mobile: string;
+  delivery_address: StoreOrderAddress;
+  items: StoreOrderItem[];
+  subtotal: number;
+  discount_amount: number;
+  coupon_code?: string | null;
+  tax_amount: number;
+  delivery_fee: number;
+  total_amount: number;
+  payment_method: 'razorpay' | 'cashfree' | 'phonepe' | 'cod';
+  payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
+  payment_details?: Record<string, unknown>;
+  order_status: StoreOrderStage;
+  status_timeline: Array<{
+    status: StoreOrderStage;
+    timestamp: string;
+    note?: string;
+  }>;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CommerceOrderItem {

@@ -21,6 +21,11 @@ import {
   Check,
   Building,
   RefreshCw,
+  Eye,
+  CreditCard,
+  MessageSquare,
+  ShieldCheck,
+  Zap,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -28,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -46,7 +52,7 @@ import {
 import { toast } from "sonner";
 import { compressImageTo80KB } from "@/lib/media/compress-image";
 import { computeStoreStatus, type StoreStatusResult } from "@/lib/commerce/store-status";
-import type { StoreProfile } from "@/types";
+import type { StoreProfile, PaymentGatewayConfig, NotificationTemplateConfig } from "@/types";
 
 const ALL_DAYS = [
   { id: "monday", label: "Mon", full: "Monday" },
@@ -63,6 +69,9 @@ export default function StorePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusResult, setStatusResult] = useState<StoreStatusResult | null>(null);
+
+  // Available WhatsApp Templates for dropdown
+  const [availableTemplates, setAvailableTemplates] = useState<{ id: string; name: string }[]>([]);
 
   // Add / Edit Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -88,6 +97,31 @@ export default function StorePage() {
   ]);
   const [manualOverride, setManualOverride] = useState<"auto" | "online" | "offline">("auto");
 
+  // Payment Gateways Config State
+  const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>({
+    cod: { enabled: true, min_order_value: 0 },
+    online: {
+      enabled: false,
+      provider: "razorpay",
+      razorpay: { key_id: "", key_secret: "" },
+      cashfree: { app_id: "", secret_key: "", env: "sandbox" },
+      phonepe: { merchant_id: "", salt_key: "", salt_index: "1", env: "uat" },
+    },
+  });
+  const [paymentSaving, setPaymentSaving] = useState(false);
+
+  // WhatsApp Notification Templates State
+  const [notifTemplates, setNotifTemplates] = useState<NotificationTemplateConfig>({
+    created: "",
+    preparing: "",
+    packing: "",
+    packaged: "",
+    on_the_way: "",
+    delivered: "",
+    cancelled: "",
+  });
+  const [templatesSaving, setTemplatesSaving] = useState(false);
+
   // Logo file selection state
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
@@ -99,6 +133,7 @@ export default function StorePage() {
 
   // Copied indicator
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedStorefront, setCopiedStorefront] = useState(false);
 
   // Fetch store details
   const fetchStore = useCallback(async (isRefresh = false) => {
@@ -132,6 +167,33 @@ export default function StorePage() {
             : ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
         );
         setManualOverride(data.store.manual_override || "auto");
+
+        // Payment gateways
+        if (data.store.payment_gateway_config) {
+          const pg = data.store.payment_gateway_config;
+          setPaymentConfig({
+            cod: {
+              enabled: pg.cod?.enabled ?? false,
+              min_order_value: pg.cod?.min_order_value || 0,
+            },
+            online: {
+              enabled:
+                pg.online?.enabled ??
+                Boolean(pg.razorpay?.enabled || pg.cashfree?.enabled || pg.phonepe?.enabled),
+              provider:
+                pg.online?.provider ||
+                (pg.cashfree?.enabled ? "cashfree" : pg.phonepe?.enabled ? "phonepe" : "razorpay"),
+              razorpay: pg.online?.razorpay || pg.razorpay || { key_id: "", key_secret: "" },
+              cashfree: pg.online?.cashfree || pg.cashfree || { app_id: "", secret_key: "", env: "sandbox" },
+              phonepe: pg.online?.phonepe || pg.phonepe || { merchant_id: "", salt_key: "", salt_index: "1", env: "uat" },
+            },
+          });
+        }
+
+        // Templates
+        if (data.store.notification_templates) {
+          setNotifTemplates(data.store.notification_templates);
+        }
       } else {
         setStore(null);
         setStatusResult(null);
@@ -144,16 +206,30 @@ export default function StorePage() {
     }
   }, []);
 
+  // Fetch available WhatsApp templates
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await fetch("/api/commerce/templates");
+      const data = await res.json();
+      if (res.ok && data.templates) {
+        setAvailableTemplates(data.templates);
+      }
+    } catch {
+      // non-fatal
+    }
+  }, []);
+
   useEffect(() => {
     fetchStore();
-  }, [fetchStore]);
+    fetchTemplates();
+  }, [fetchStore, fetchTemplates]);
 
-  // Recalculate status every minute for live opening/closing check
+  // Recalculate status every 30 seconds for live opening/closing check
   useEffect(() => {
     if (!store) return;
     const interval = setInterval(() => {
       setStatusResult(computeStoreStatus(store));
-    }, 30000); // Check every 30 seconds
+    }, 30000);
     return () => clearInterval(interval);
   }, [store]);
 
@@ -335,16 +411,98 @@ export default function StorePage() {
     }
   };
 
+  // Save Payment Gateway Config
+  const handleSavePaymentConfig = async () => {
+    if (!store) return;
+    setPaymentSaving(true);
+    try {
+      const p = paymentConfig.online?.provider || "razorpay";
+      const fullPayload = {
+        cod: paymentConfig.cod,
+        online: paymentConfig.online,
+        razorpay: {
+          enabled: Boolean(paymentConfig.online?.enabled && p === "razorpay"),
+          key_id: paymentConfig.online?.razorpay?.key_id || "",
+          key_secret: paymentConfig.online?.razorpay?.key_secret || "",
+        },
+        cashfree: {
+          enabled: Boolean(paymentConfig.online?.enabled && p === "cashfree"),
+          app_id: paymentConfig.online?.cashfree?.app_id || "",
+          secret_key: paymentConfig.online?.cashfree?.secret_key || "",
+          env: paymentConfig.online?.cashfree?.env || "sandbox",
+        },
+        phonepe: {
+          enabled: Boolean(paymentConfig.online?.enabled && p === "phonepe"),
+          merchant_id: paymentConfig.online?.phonepe?.merchant_id || "",
+          salt_key: paymentConfig.online?.phonepe?.salt_key || "",
+          salt_index: paymentConfig.online?.phonepe?.salt_index || "1",
+          env: paymentConfig.online?.phonepe?.env || "uat",
+        },
+      };
+
+      const res = await fetch("/api/commerce/store", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment_gateway_config: fullPayload }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save payment gateways");
+      toast.success("Payment settings saved successfully!");
+      await fetchStore(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save payments");
+    } finally {
+      setPaymentSaving(false);
+    }
+  };
+
+  // Save WhatsApp Notification Templates
+  const handleSaveNotificationTemplates = async () => {
+    if (!store) return;
+    setTemplatesSaving(true);
+    try {
+      const res = await fetch("/api/commerce/store", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notification_templates: notifTemplates }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save notification templates");
+      toast.success("WhatsApp stage notification templates saved!");
+      await fetchStore(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save templates");
+    } finally {
+      setTemplatesSaving(false);
+    }
+  };
+
   // Clean WhatsApp phone number for link
   const rawMobile = store?.mobile_number || "";
   const cleanedPhone = rawMobile.replace(/[^0-9]/g, "");
   const waChatLink = `https://wa.me/${cleanedPhone}`;
+
+  // Public customer storefront link
+  const publicStoreUrl = typeof window !== "undefined" && store ? `${window.location.origin}/user/${store.id}` : "";
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(waChatLink);
     setCopiedLink(true);
     toast.success("WhatsApp link copied to clipboard!");
     setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleCopyStorefront = () => {
+    if (!publicStoreUrl) return;
+    navigator.clipboard.writeText(publicStoreUrl);
+    setCopiedStorefront(true);
+    toast.success("Public Storefront link copied!");
+    setTimeout(() => setCopiedStorefront(false), 2500);
+  };
+
+  const handlePreviewStore = () => {
+    if (!store) return;
+    window.open(`/user/${store.id}`, "_blank");
   };
 
   const formatTime12h = (hhmm: string) => {
@@ -396,14 +554,24 @@ export default function StorePage() {
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {store
-              ? "Manage your WhatsApp store identity, operating hours, and customer storefront."
+              ? "Manage your WhatsApp store identity, operating hours, payment gateways, and templates."
               : "Set up your WhatsApp business store profile and automated operating schedule."}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {store ? (
             <>
+              {/* PREVIEW BUTTON */}
+              <Button
+                onClick={handlePreviewStore}
+                size="sm"
+                className="gap-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                Preview Store
+              </Button>
+
               <Button
                 variant="outline"
                 size="sm"
@@ -445,7 +613,7 @@ export default function StorePage() {
           </h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
             Create your WhatsApp store to showcase your products, configure automated opening and
-            closing hours, and accept direct orders from shoppers.
+            closing hours, accept direct orders, and connect online payments.
           </p>
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Button onClick={handleOpenAddModal} size="lg" className="gap-2 shadow-sm w-full sm:w-auto">
@@ -460,18 +628,26 @@ export default function StorePage() {
       ) : (
         /* Tab-based Store Profile Interface */
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 max-w-md mb-6">
-            <TabsTrigger value="profile" className="gap-2 text-xs sm:text-sm">
-              <Store className="h-4 w-4" />
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 max-w-2xl mb-6">
+            <TabsTrigger value="profile" className="gap-1.5 text-xs">
+              <Store className="h-3.5 w-3.5" />
               Profile
             </TabsTrigger>
-            <TabsTrigger value="timing" className="gap-2 text-xs sm:text-sm">
-              <Clock className="h-4 w-4" />
-              Operating Hours
+            <TabsTrigger value="timing" className="gap-1.5 text-xs">
+              <Clock className="h-3.5 w-3.5" />
+              Hours
             </TabsTrigger>
-            <TabsTrigger value="storefront" className="gap-2 text-xs sm:text-sm">
-              <Share2 className="h-4 w-4" />
-              WhatsApp Link
+            <TabsTrigger value="payments" className="gap-1.5 text-xs">
+              <CreditCard className="h-3.5 w-3.5" />
+              Payments
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="gap-1.5 text-xs">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Templates
+            </TabsTrigger>
+            <TabsTrigger value="storefront" className="gap-1.5 text-xs">
+              <Share2 className="h-3.5 w-3.5" />
+              Store Links
             </TabsTrigger>
           </TabsList>
 
@@ -543,7 +719,7 @@ export default function StorePage() {
                   </div>
                   <CardTitle className="mt-4 text-xl font-bold">{store.name}</CardTitle>
                   <CardDescription className="text-xs font-mono">
-                    Account ID: {store.account_id.slice(0, 8)}...
+                    Store ID: {store.id}
                   </CardDescription>
                 </CardHeader>
 
@@ -644,31 +820,41 @@ export default function StorePage() {
                   </CardContent>
                 </Card>
 
-                {/* WhatsApp Link Quick Box */}
-                <Card className="shadow-sm">
+                {/* Customer Storefront URL Box */}
+                <Card className="shadow-sm border-primary/20 bg-primary/5">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Share2 className="h-4 w-4 text-primary" />
-                      Customer WhatsApp Contact
+                    <CardTitle className="text-base flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-primary font-bold">
+                        <Eye className="h-4 w-4" />
+                        Customer Storefront URL (/user/{store.id})
+                      </span>
+                      <Button
+                        size="sm"
+                        onClick={handlePreviewStore}
+                        className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Open Storefront
+                      </Button>
                     </CardTitle>
                     <CardDescription>
-                      Share your direct WhatsApp chat link with customers to start receiving orders.
+                      Share this unique URL with your customers. No login required.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Input
-                        value={waChatLink}
+                        value={publicStoreUrl}
                         readOnly
-                        className="font-mono text-xs bg-muted/50"
+                        className="font-mono text-xs bg-background"
                       />
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={handleCopyLink}
+                        onClick={handleCopyStorefront}
                         className="gap-1.5 shrink-0 text-xs"
                       >
-                        {copiedLink ? (
+                        {copiedStorefront ? (
                           <>
                             <Check className="h-3.5 w-3.5 text-emerald-600" />
                             Copied
@@ -676,17 +862,9 @@ export default function StorePage() {
                         ) : (
                           <>
                             <Copy className="h-3.5 w-3.5" />
-                            Copy
+                            Copy Link
                           </>
                         )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => window.open(waChatLink, "_blank")}
-                        className="shrink-0 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        Chat
                       </Button>
                     </div>
                   </CardContent>
@@ -707,8 +885,7 @@ export default function StorePage() {
                     </CardTitle>
                     <CardDescription className="mt-1">
                       Set your opening time and end time. In automatic mode, the store will strictly
-                      be <strong>Online</strong> during this window and <strong>Offline</strong>{" "}
-                      outside it.
+                      be <strong>Online</strong> during this window and <strong>Offline</strong> outside it.
                     </CardDescription>
                   </div>
                   {statusResult && (
@@ -914,7 +1091,564 @@ export default function StorePage() {
             </Card>
           </TabsContent>
 
-          {/* TAB 3: WHATSAPP LINK & SHARE */}
+          {/* TAB 3: PAYMENT GATEWAYS CONFIGURATION */}
+          <TabsContent value="payments" className="space-y-6">
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-primary" />
+                  Store Payment Methods
+                </CardTitle>
+                <CardDescription>
+                  Configure payment options for customer checkout. Only enabled and configured
+                  payment methods will be displayed to shoppers during order placement.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* 1. Cash on Delivery (COD) Section */}
+                <div className="p-4 rounded-xl border bg-card space-y-4 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-lg bg-emerald-600/10 text-emerald-600 flex items-center justify-center font-bold text-base">
+                        💵
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-sm">Cash on Delivery (COD)</h4>
+                          <Badge
+                            variant={paymentConfig.cod?.enabled ? "default" : "secondary"}
+                            className={`text-[10px] py-0 px-2 ${
+                              paymentConfig.cod?.enabled
+                                ? "bg-emerald-600 text-white"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {paymentConfig.cod?.enabled ? "Enabled" : "Disabled"}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Allow shoppers to pay with cash or direct UPI at delivery doorstep.
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={paymentConfig.cod?.enabled ?? false}
+                      onCheckedChange={(checked) =>
+                        setPaymentConfig((prev) => ({
+                          ...prev,
+                          cod: {
+                            enabled: checked,
+                            min_order_value: prev.cod?.min_order_value || 0,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+
+                  {paymentConfig.cod?.enabled && (
+                    <div className="pt-3 border-t max-w-xs space-y-1.5">
+                      <Label className="text-xs font-semibold">Minimum Order for COD (₹)</Label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={paymentConfig.cod?.min_order_value || 0}
+                        onChange={(e) =>
+                          setPaymentConfig((prev) => ({
+                            ...prev,
+                            cod: {
+                              ...prev.cod!,
+                              min_order_value: parseFloat(e.target.value) || 0,
+                            },
+                          }))
+                        }
+                        className="h-8 text-xs font-mono"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Online Payment Gateway Section */}
+                <div className="p-4 rounded-xl border bg-card space-y-4 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-lg bg-blue-600/10 text-blue-600 flex items-center justify-center font-bold text-base">
+                        💳
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-sm">Online Payment</h4>
+                          <Badge
+                            variant={paymentConfig.online?.enabled ? "default" : "secondary"}
+                            className={`text-[10px] py-0 px-2 ${
+                              paymentConfig.online?.enabled
+                                ? "bg-blue-600 text-white"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {paymentConfig.online?.enabled ? "Enabled" : "Disabled"}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Accept digital payments online via UPI, Credit/Debit Cards, and Netbanking.
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={paymentConfig.online?.enabled ?? false}
+                      onCheckedChange={(checked) =>
+                        setPaymentConfig((prev) => ({
+                          ...prev,
+                          online: {
+                            enabled: checked,
+                            provider: prev.online?.provider || "razorpay",
+                            razorpay: prev.online?.razorpay || { key_id: "", key_secret: "" },
+                            cashfree: prev.online?.cashfree || { app_id: "", secret_key: "", env: "sandbox" },
+                            phonepe: prev.online?.phonepe || { merchant_id: "", salt_key: "", salt_index: "1", env: "uat" },
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+
+                  {paymentConfig.online?.enabled && (
+                    <div className="space-y-4 pt-3 border-t">
+                      {/* Provider Selector */}
+                      <div className="space-y-1.5 max-w-sm">
+                        <Label className="text-xs font-semibold">Payment Gateway Provider</Label>
+                        <select
+                          className="w-full h-9 rounded-md border bg-background px-3 text-xs"
+                          value={paymentConfig.online?.provider || "razorpay"}
+                          onChange={(e) =>
+                            setPaymentConfig((prev) => ({
+                              ...prev,
+                              online: {
+                                ...prev.online!,
+                                provider: e.target.value as "razorpay" | "cashfree" | "phonepe",
+                              },
+                            }))
+                          }
+                        >
+                          <option value="razorpay">Razorpay (Recommended)</option>
+                          <option value="cashfree">Cashfree Payments</option>
+                          <option value="phonepe">PhonePe Payment Gateway</option>
+                        </select>
+                      </div>
+
+                      {/* Razorpay Inputs */}
+                      {(paymentConfig.online?.provider === "razorpay" ||
+                        !paymentConfig.online?.provider) && (
+                        <div className="p-3.5 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-xs text-blue-900 dark:text-blue-200">
+                              Razorpay API Credentials
+                            </span>
+                            {paymentConfig.online?.razorpay?.key_id ? (
+                              <Badge className="bg-emerald-600 text-white text-[10px]">
+                                Configured
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">
+                                Missing Key ID
+                              </Badge>
+                            )}
+                          </div>
+
+                          <div className="grid sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Key ID</Label>
+                              <Input
+                                placeholder="rzp_live_..."
+                                value={paymentConfig.online?.razorpay?.key_id || ""}
+                                onChange={(e) =>
+                                  setPaymentConfig((prev) => ({
+                                    ...prev,
+                                    online: {
+                                      ...prev.online!,
+                                      razorpay: {
+                                        ...prev.online?.razorpay,
+                                        key_id: e.target.value,
+                                        key_secret: prev.online?.razorpay?.key_secret || "",
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="h-8 text-xs font-mono bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Key Secret</Label>
+                              <Input
+                                type="password"
+                                placeholder="••••••••••••••••"
+                                value={paymentConfig.online?.razorpay?.key_secret || ""}
+                                onChange={(e) =>
+                                  setPaymentConfig((prev) => ({
+                                    ...prev,
+                                    online: {
+                                      ...prev.online!,
+                                      razorpay: {
+                                        ...prev.online?.razorpay,
+                                        key_id: prev.online?.razorpay?.key_id || "",
+                                        key_secret: e.target.value,
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="h-8 text-xs font-mono bg-background"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Cashfree Inputs */}
+                      {paymentConfig.online?.provider === "cashfree" && (
+                        <div className="p-3.5 rounded-lg bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900 space-y-3">
+                          <span className="font-semibold text-xs text-purple-900 dark:text-purple-200">
+                            Cashfree API Credentials
+                          </span>
+                          <div className="grid sm:grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">App ID</Label>
+                              <Input
+                                placeholder="CF..."
+                                value={paymentConfig.online?.cashfree?.app_id || ""}
+                                onChange={(e) =>
+                                  setPaymentConfig((prev) => ({
+                                    ...prev,
+                                    online: {
+                                      ...prev.online!,
+                                      cashfree: {
+                                        ...prev.online?.cashfree,
+                                        app_id: e.target.value,
+                                        secret_key: prev.online?.cashfree?.secret_key || "",
+                                        env: prev.online?.cashfree?.env || "sandbox",
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="h-8 text-xs font-mono bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Secret Key</Label>
+                              <Input
+                                type="password"
+                                placeholder="••••••••••••••••"
+                                value={paymentConfig.online?.cashfree?.secret_key || ""}
+                                onChange={(e) =>
+                                  setPaymentConfig((prev) => ({
+                                    ...prev,
+                                    online: {
+                                      ...prev.online!,
+                                      cashfree: {
+                                        ...prev.online?.cashfree,
+                                        app_id: prev.online?.cashfree?.app_id || "",
+                                        secret_key: e.target.value,
+                                        env: prev.online?.cashfree?.env || "sandbox",
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="h-8 text-xs font-mono bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Environment</Label>
+                              <select
+                                className="w-full h-8 rounded-md border bg-background px-2 text-xs"
+                                value={paymentConfig.online?.cashfree?.env || "sandbox"}
+                                onChange={(e) =>
+                                  setPaymentConfig((prev) => ({
+                                    ...prev,
+                                    online: {
+                                      ...prev.online!,
+                                      cashfree: {
+                                        ...prev.online?.cashfree!,
+                                        env: e.target.value as "sandbox" | "production",
+                                      },
+                                    },
+                                  }))
+                                }
+                              >
+                                <option value="sandbox">Sandbox (Test)</option>
+                                <option value="production">Production (Live)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* PhonePe Inputs */}
+                      {paymentConfig.online?.provider === "phonepe" && (
+                        <div className="p-3.5 rounded-lg bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900 space-y-3">
+                          <span className="font-semibold text-xs text-indigo-900 dark:text-indigo-200">
+                            PhonePe API Credentials
+                          </span>
+                          <div className="grid sm:grid-cols-4 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Merchant ID</Label>
+                              <Input
+                                placeholder="PGTESTPAYUAT..."
+                                value={paymentConfig.online?.phonepe?.merchant_id || ""}
+                                onChange={(e) =>
+                                  setPaymentConfig((prev) => ({
+                                    ...prev,
+                                    online: {
+                                      ...prev.online!,
+                                      phonepe: {
+                                        ...prev.online?.phonepe,
+                                        merchant_id: e.target.value,
+                                        salt_key: prev.online?.phonepe?.salt_key || "",
+                                        salt_index: prev.online?.phonepe?.salt_index || "1",
+                                        env: prev.online?.phonepe?.env || "uat",
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="h-8 text-xs font-mono bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Salt Key</Label>
+                              <Input
+                                type="password"
+                                placeholder="••••••••"
+                                value={paymentConfig.online?.phonepe?.salt_key || ""}
+                                onChange={(e) =>
+                                  setPaymentConfig((prev) => ({
+                                    ...prev,
+                                    online: {
+                                      ...prev.online!,
+                                      phonepe: {
+                                        ...prev.online?.phonepe,
+                                        merchant_id: prev.online?.phonepe?.merchant_id || "",
+                                        salt_key: e.target.value,
+                                        salt_index: prev.online?.phonepe?.salt_index || "1",
+                                        env: prev.online?.phonepe?.env || "uat",
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="h-8 text-xs font-mono bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Salt Index</Label>
+                              <Input
+                                placeholder="1"
+                                value={paymentConfig.online?.phonepe?.salt_index || "1"}
+                                onChange={(e) =>
+                                  setPaymentConfig((prev) => ({
+                                    ...prev,
+                                    online: {
+                                      ...prev.online!,
+                                      phonepe: {
+                                        ...prev.online?.phonepe,
+                                        merchant_id: prev.online?.phonepe?.merchant_id || "",
+                                        salt_key: prev.online?.phonepe?.salt_key || "",
+                                        salt_index: e.target.value,
+                                        env: prev.online?.phonepe?.env || "uat",
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="h-8 text-xs font-mono bg-background"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] font-semibold">Environment</Label>
+                              <select
+                                className="w-full h-8 rounded-md border bg-background px-2 text-xs"
+                                value={paymentConfig.online?.phonepe?.env || "uat"}
+                                onChange={(e) =>
+                                  setPaymentConfig((prev) => ({
+                                    ...prev,
+                                    online: {
+                                      ...prev.online!,
+                                      phonepe: {
+                                        ...prev.online?.phonepe!,
+                                        env: e.target.value as "uat" | "production",
+                                      },
+                                    },
+                                  }))
+                                }
+                              >
+                                <option value="uat">UAT (Test)</option>
+                                <option value="production">Production</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <Button
+                    onClick={handleSavePaymentConfig}
+                    disabled={paymentSaving}
+                    className="gap-2 shadow-sm"
+                  >
+                    {paymentSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Saving Settings...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4" />
+                        Save Payment Settings
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 4: WHATSAPP NOTIFICATION TEMPLATES */}
+          <TabsContent value="templates" className="space-y-6">
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                  Order Stage WhatsApp Templates
+                </CardTitle>
+                <CardDescription>
+                  Select which WhatsApp message template is sent to the customer at each order
+                  lifecycle stage. When an order transitions stage, the system sends the notification
+                  automatically.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {/* 1. Order Created */}
+                <div className="p-4 rounded-xl border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      1. Order Confirmed (Created)
+                    </Label>
+                    <Badge variant="outline" className="text-[11px]">Trigger: On Checkout</Badge>
+                  </div>
+                  <Input
+                    placeholder="Enter template name (e.g. order_confirmed)"
+                    value={notifTemplates.created || ""}
+                    onChange={(e) => setNotifTemplates((p) => ({ ...p, created: e.target.value }))}
+                    className="font-mono text-xs bg-background"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Sent automatically when customer finishes placing the order.
+                  </p>
+                </div>
+
+                {/* 2. Preparation in Progress */}
+                <div className="p-4 rounded-xl border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                      2. Preparation in Progress
+                    </Label>
+                    <Badge variant="outline" className="text-[11px]">Trigger: In Kitchen / Assembling</Badge>
+                  </div>
+                  <Input
+                    placeholder="Enter template name (e.g. order_preparing)"
+                    value={notifTemplates.preparing || ""}
+                    onChange={(e) => setNotifTemplates((p) => ({ ...p, preparing: e.target.value }))}
+                    className="font-mono text-xs bg-background"
+                  />
+                </div>
+
+                {/* 3. Packing in Progress */}
+                <div className="p-4 rounded-xl border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                      3. Packing in Progress
+                    </Label>
+                    <Badge variant="outline" className="text-[11px]">Trigger: Boxing & Sealing</Badge>
+                  </div>
+                  <Input
+                    placeholder="Enter template name (e.g. order_packing)"
+                    value={notifTemplates.packing || ""}
+                    onChange={(e) => setNotifTemplates((p) => ({ ...p, packing: e.target.value }))}
+                    className="font-mono text-xs bg-background"
+                  />
+                </div>
+
+                {/* 4. Package Done */}
+                <div className="p-4 rounded-xl border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                      4. Package Done
+                    </Label>
+                    <Badge variant="outline" className="text-[11px]">Trigger: Ready for Pickup</Badge>
+                  </div>
+                  <Input
+                    placeholder="Enter template name (e.g. order_packaged)"
+                    value={notifTemplates.packaged || ""}
+                    onChange={(e) => setNotifTemplates((p) => ({ ...p, packaged: e.target.value }))}
+                    className="font-mono text-xs bg-background"
+                  />
+                </div>
+
+                {/* 5. On the Way to Delivery */}
+                <div className="p-4 rounded-xl border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                      5. On the Way to Delivery
+                    </Label>
+                    <Badge variant="outline" className="text-[11px]">Trigger: Rider Dispatched</Badge>
+                  </div>
+                  <Input
+                    placeholder="Enter template name (e.g. order_out_for_delivery)"
+                    value={notifTemplates.on_the_way || ""}
+                    onChange={(e) => setNotifTemplates((p) => ({ ...p, on_the_way: e.target.value }))}
+                    className="font-mono text-xs bg-background"
+                  />
+                </div>
+
+                {/* 6. Delivered */}
+                <div className="p-4 rounded-xl border bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      6. Order Delivered
+                    </Label>
+                    <Badge variant="outline" className="text-[11px]">Trigger: Customer Received</Badge>
+                  </div>
+                  <Input
+                    placeholder="Enter template name (e.g. order_delivered)"
+                    value={notifTemplates.delivered || ""}
+                    onChange={(e) => setNotifTemplates((p) => ({ ...p, delivered: e.target.value }))}
+                    className="font-mono text-xs bg-background"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Sent automatically when store manager marks the order Delivered.
+                  </p>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <Button
+                    onClick={handleSaveNotificationTemplates}
+                    disabled={templatesSaving}
+                    className="gap-2 shadow-sm"
+                  >
+                    {templatesSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Saving Templates...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4" />
+                        Save Notification Templates
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB 5: WHATSAPP LINK & SHARE */}
           <TabsContent value="storefront" className="space-y-6">
             <Card className="shadow-sm">
               <CardHeader>
@@ -923,14 +1657,55 @@ export default function StorePage() {
                   WhatsApp Direct Chat & Catalog Link
                 </CardTitle>
                 <CardDescription>
-                  Use this link on Instagram bio, Google Maps, Facebook ads, and website banners to
-                  drive direct WhatsApp purchases.
+                  Share your direct WhatsApp chat link or public customer web storefront.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
+                {/* Public Web Storefront */}
+                <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-primary uppercase tracking-wider">
+                      Public Customer Storefront URL (No Login Required)
+                    </Label>
+                    <Badge className="bg-emerald-600 text-white text-[11px]">Online Storefront</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={publicStoreUrl}
+                      readOnly
+                      className="font-mono text-sm bg-background"
+                    />
+                    <Button
+                      onClick={handleCopyStorefront}
+                      variant="secondary"
+                      className="gap-1.5 shrink-0"
+                    >
+                      {copiedStorefront ? (
+                        <>
+                          <Check className="h-4 w-4 text-emerald-600" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4" />
+                          Copy Link
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handlePreviewStore}
+                      className="gap-1.5 shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Preview
+                    </Button>
+                  </div>
+                </div>
+
+                {/* WhatsApp Chat Link */}
                 <div className="p-4 rounded-xl bg-muted/40 border space-y-3">
                   <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Your WhatsApp Storefront URL
+                    Direct WhatsApp wa.me Link
                   </Label>
                   <div className="flex items-center gap-2">
                     <Input
@@ -955,22 +1730,14 @@ export default function StorePage() {
                         </>
                       )}
                     </Button>
+                    <Button
+                      onClick={() => window.open(waChatLink, "_blank")}
+                      className="gap-1.5 shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Chat
+                    </Button>
                   </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
-                  <Button
-                    size="lg"
-                    onClick={() => window.open(waChatLink, "_blank")}
-                    className="w-full sm:w-auto gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Open WhatsApp Chat
-                  </Button>
-
-                  <p className="text-xs text-muted-foreground text-center sm:text-left">
-                    Opens a chat directly with +{cleanedPhone} in the WhatsApp app or WhatsApp Web.
-                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -980,7 +1747,7 @@ export default function StorePage() {
 
       {/* ADD / EDIT STORE MODAL */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl md:max-w-3xl w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">
               <Store className="h-5 w-5 text-primary" />

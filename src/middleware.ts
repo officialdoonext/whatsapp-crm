@@ -161,6 +161,7 @@ export async function middleware(request: NextRequest) {
     '/products',
     '/categories',
     '/variants',
+    '/coupons',
     '/integrations',
   ]
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))

@@ -35,6 +35,7 @@ import {
   FolderTree,
   SlidersHorizontal,
   Cloud,
+  Ticket,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
 import {
@@ -93,6 +94,7 @@ const commerceNavItems: NavItem[] = [
   { href: "/products", labelKey: "products", icon: Layers, beta: true },
   { href: "/categories", labelKey: "categories", icon: FolderTree, beta: true },
   { href: "/variants", labelKey: "variants", icon: SlidersHorizontal, beta: true },
+  { href: "/coupons", labelKey: "coupons", icon: Ticket, beta: true },
   { href: "/integrations", labelKey: "integrations", icon: Cloud, beta: true },
 ];
 

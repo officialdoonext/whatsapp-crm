@@ -342,7 +342,7 @@ export default function CategoriesPage() {
 
       {/* Add Category Dialog */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="sm:max-w-md bg-card border-border">
+        <DialogContent className="sm:max-w-lg md:max-w-xl bg-card border-border">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg font-bold">
               <FolderTree className="size-5 text-primary" />

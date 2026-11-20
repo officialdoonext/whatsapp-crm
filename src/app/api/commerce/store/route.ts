@@ -153,6 +153,9 @@ export async function PUT(request: Request) {
       closing_time,
       working_days,
       manual_override,
+      payment_gateway_config,
+      notification_templates,
+      expiry_date,
       metadata,
     } = body;
 
@@ -211,6 +214,15 @@ export async function PUT(request: Request) {
     }
     if (manual_override !== undefined) {
       updates.manual_override = updatedOverride;
+    }
+    if (payment_gateway_config !== undefined) {
+      updates.payment_gateway_config = payment_gateway_config;
+    }
+    if (notification_templates !== undefined) {
+      updates.notification_templates = notification_templates;
+    }
+    if (expiry_date !== undefined) {
+      updates.expiry_date = expiry_date;
     }
     if (metadata !== undefined) {
       updates.metadata = { ...(existing.metadata || {}), ...metadata };
