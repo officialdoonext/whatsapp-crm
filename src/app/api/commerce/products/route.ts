@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     const page = Math.max(parseInt(searchParams.get('page') || '1', 10), 1);
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '24', 10), 1), 100);
     const search = searchParams.get('search')?.trim() || '';
-    const foodType = searchParams.get('food_type')?.trim() || '';
+    const typeFilter = searchParams.get('product_type')?.trim() || searchParams.get('food_type')?.trim() || '';
 
     const from = (page - 1) * limit;
     const to = from + limit - 1;
@@ -29,8 +29,8 @@ export async function GET(request: Request) {
       query = query.or(`name.ilike.%${search}%,short_code.ilike.%${search}%`);
     }
 
-    if (foodType && foodType !== 'all') {
-      query = query.eq('food_type', foodType);
+    if (typeFilter && typeFilter !== 'all') {
+      query = query.eq('food_type', typeFilter);
     }
 
     const { data, count, error } = await query;
@@ -102,7 +102,8 @@ export async function POST(request: Request) {
       description,
       list_price,
       sale_price,
-      food_type = 'others',
+      food_type,
+      product_type,
       tax_config = { inclusive: true },
       variants_config = [],
       nutrition_table = [],
@@ -114,6 +115,8 @@ export async function POST(request: Request) {
     if (!trimmedName) {
       return NextResponse.json({ error: 'Product name is required' }, { status: 400 });
     }
+
+    const effectiveType = product_type?.trim() || food_type?.trim() || 'General';
 
     const trimmedShortCode = typeof short_code === 'string' && short_code.trim()
       ? short_code.trim()
@@ -132,7 +135,8 @@ export async function POST(request: Request) {
       sale_price: numSalePrice,
       image_url: primaryImage,
       images: Array.isArray(images) ? images : [],
-      food_type,
+      food_type: effectiveType,
+      product_type: effectiveType,
       tax_config,
       variants_config,
       nutrition_table,
@@ -140,7 +144,8 @@ export async function POST(request: Request) {
       is_active: true,
       metadata: {
         short_code: trimmedShortCode,
-        food_type,
+        food_type: effectiveType,
+        product_type: effectiveType,
         list_price: numListPrice,
         sale_price: numSalePrice,
         tax_config,
@@ -205,7 +210,8 @@ export async function PUT(request: Request) {
       description,
       list_price,
       sale_price,
-      food_type = 'others',
+      food_type,
+      product_type,
       tax_config = { inclusive: true },
       variants_config = [],
       nutrition_table = [],
@@ -223,6 +229,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Product name is required' }, { status: 400 });
     }
 
+    const effectiveType = product_type?.trim() || food_type?.trim() || 'General';
+
     const numListPrice = Number(list_price) || 0;
     const numSalePrice = Number(sale_price) || numListPrice;
     const primaryImage = Array.isArray(images) && images.length > 0 ? images[0] : null;
@@ -235,7 +243,8 @@ export async function PUT(request: Request) {
       sale_price: numSalePrice,
       image_url: primaryImage,
       images: Array.isArray(images) ? images : [],
-      food_type,
+      food_type: effectiveType,
+      product_type: effectiveType,
       tax_config,
       variants_config,
       nutrition_table,
@@ -243,7 +252,8 @@ export async function PUT(request: Request) {
       is_active,
       metadata: {
         short_code,
-        food_type,
+        food_type: effectiveType,
+        product_type: effectiveType,
         list_price: numListPrice,
         sale_price: numSalePrice,
         tax_config,

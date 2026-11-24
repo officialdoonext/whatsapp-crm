@@ -392,6 +392,17 @@ export interface CommerceCategory {
   updated_at?: string;
 }
 
+export interface CommerceProductType {
+  id: string;
+  account_id: string;
+  name: string;
+  description?: string | null;
+  slug?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface CommerceVariant {
   id: string;
   account_id: string;
@@ -465,7 +476,8 @@ export interface StoreProduct {
   list_price: number;
   sale_price: number;
   price?: number;
-  food_type: 'veg' | 'non-veg' | 'others';
+  food_type?: string;
+  product_type?: string;
   images: string[];
   image_url?: string | null;
   tax_config: TaxConfig;
@@ -593,7 +605,8 @@ export interface StoreOrderItem {
   unit_price: number;
   sale_price: number;
   total_price: number;
-  food_type?: 'veg' | 'non-veg' | 'others';
+  food_type?: string;
+  product_type?: string;
   image_url?: string;
 }
 

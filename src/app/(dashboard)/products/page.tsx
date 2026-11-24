@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import {
   Layers,
   Plus,
@@ -24,6 +25,7 @@ import {
   Pencil,
   Info,
   FileSpreadsheet,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +42,7 @@ import {
 import { toast } from "sonner";
 import { compressImageTo80KB } from "@/lib/media/compress-image";
 import { BulkUploadModal } from "@/components/commerce/bulk-upload-modal";
-import type { CommerceVariant, ProductVariantItem, NutritionRow, TaxConfig, StoreProduct } from "@/types";
+import type { CommerceVariant, ProductVariantItem, NutritionRow, TaxConfig, StoreProduct, CommerceProductType } from "@/types";
 
 const PAGE_SIZE = 24;
 
@@ -49,12 +51,13 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [foodTypeFilter, setFoodTypeFilter] = useState("all");
+  const [productTypeFilter, setProductTypeFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Available variant templates for "Add Variant" picker
+  // Available product types & variant templates
+  const [availableProductTypes, setAvailableProductTypes] = useState<CommerceProductType[]>([]);
   const [availableVariants, setAvailableVariants] = useState<CommerceVariant[]>([]);
 
   // Bulk Upload modal state
@@ -68,7 +71,9 @@ export default function ProductsPage() {
   const [description, setDescription] = useState("");
   const [listPrice, setListPrice] = useState("");
   const [salePrice, setSalePrice] = useState("");
-  const [foodType, setFoodType] = useState<"veg" | "non-veg" | "others">("veg");
+  const [selectedProductType, setSelectedProductType] = useState<string>("Veg");
+  const [customTypeInput, setCustomTypeInput] = useState<string>("");
+  const [showCustomType, setShowCustomType] = useState(false);
 
   // Tax state
   const [taxInclusive, setTaxInclusive] = useState(true);
@@ -104,8 +109,21 @@ export default function ProductsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Fetch product types
+  const fetchProductTypes = async () => {
+    try {
+      const res = await fetch("/api/commerce/product-types?limit=100");
+      const data = await res.json();
+      if (res.ok && data.productTypes) {
+        setAvailableProductTypes(data.productTypes);
+      }
+    } catch {
+      // quiet
+    }
+  };
+
   // Fetch product list
-  const fetchProducts = useCallback(async (targetPage = 1, searchQuery = search, typeFilter = foodTypeFilter) => {
+  const fetchProducts = useCallback(async (targetPage = 1, searchQuery = search, typeFilter = productTypeFilter) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -116,7 +134,7 @@ export default function ProductsPage() {
         params.set("search", searchQuery.trim());
       }
       if (typeFilter && typeFilter !== "all") {
-        params.set("food_type", typeFilter);
+        params.set("product_type", typeFilter);
       }
 
       const res = await fetch(`/api/commerce/products?${params.toString()}`);
@@ -135,7 +153,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, foodTypeFilter]);
+  }, [search, productTypeFilter]);
 
   // Load available variants templates
   const fetchVariantTemplates = async () => {
@@ -154,12 +172,17 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    fetchProducts(page, search, foodTypeFilter);
-  }, [page, fetchProducts, search, foodTypeFilter]);
+    fetchProductTypes();
+  }, []);
+
+  useEffect(() => {
+    fetchProducts(page, search, productTypeFilter);
+  }, [page, fetchProducts, search, productTypeFilter]);
 
   useEffect(() => {
     if (isAddOpen) {
       fetchVariantTemplates();
+      fetchProductTypes();
     }
   }, [isAddOpen]);
 
@@ -257,7 +280,10 @@ export default function ProductsPage() {
     setDescription(p.description || "");
     setListPrice(p.list_price ? String(p.list_price) : "");
     setSalePrice(p.sale_price ? String(p.sale_price) : "");
-    setFoodType(p.food_type || "others");
+    const curType = p.product_type || p.food_type || "Veg";
+    setSelectedProductType(curType);
+    setCustomTypeInput("");
+    setShowCustomType(false);
 
     // Tax
     const tc = p.tax_config || { inclusive: true };
@@ -338,6 +364,10 @@ export default function ProductsPage() {
 
       setUploadProgress(editingProductId ? "Updating product record..." : "Saving product record...");
 
+      const finalType = (showCustomType && customTypeInput.trim())
+        ? customTypeInput.trim()
+        : (selectedProductType || "General");
+
       // 2. Prepare payload
       const payload = {
         id: editingProductId || undefined,
@@ -346,7 +376,8 @@ export default function ProductsPage() {
         description: description.trim() || undefined,
         list_price: parseFloat(listPrice) || 0,
         sale_price: parseFloat(salePrice) || parseFloat(listPrice) || 0,
-        food_type: foodType,
+        food_type: finalType,
+        product_type: finalType,
         tax_config: {
           inclusive: taxInclusive,
           tax_percentage: parseFloat(taxPercentage) || 0,
@@ -379,7 +410,7 @@ export default function ProductsPage() {
       );
       setIsAddOpen(false);
       resetForm();
-      fetchProducts(page, search, foodTypeFilter);
+      fetchProducts(page, search, productTypeFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save product");
     } finally {
@@ -395,7 +426,9 @@ export default function ProductsPage() {
     setDescription("");
     setListPrice("");
     setSalePrice("");
-    setFoodType("veg");
+    setSelectedProductType(availableProductTypes[0]?.name || "Veg");
+    setCustomTypeInput("");
+    setShowCustomType(false);
     setTaxInclusive(true);
     setProductVariants([]);
     setSelectedFiles([]);
@@ -422,7 +455,7 @@ export default function ProductsPage() {
       if (viewProduct?.id === deleteId) {
         setViewProduct(null);
       }
-      fetchProducts(page, search, foodTypeFilter);
+      fetchProducts(page, search, productTypeFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete product");
     } finally {
@@ -448,7 +481,7 @@ export default function ProductsPage() {
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage your store items with multi-variant pricing, food types, tax calculations, and 80KB optimized media.
+            Manage your store items with multi-variant pricing, product types, tax calculations, and 80KB optimized media.
           </p>
         </div>
 
@@ -456,7 +489,7 @@ export default function ProductsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => fetchProducts(page, search, foodTypeFilter)}
+            onClick={() => fetchProducts(page, search, productTypeFilter)}
             disabled={loading}
             className="gap-1.5"
           >
@@ -490,8 +523,8 @@ export default function ProductsPage() {
 
       {/* Filter & Search Bar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 items-center gap-2.5 max-w-lg">
-          <div className="relative flex-1">
+        <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center max-w-2xl">
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
@@ -502,51 +535,54 @@ export default function ProductsPage() {
             />
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
             <button
               type="button"
               onClick={() => {
-                setFoodTypeFilter("all");
+                setProductTypeFilter("all");
                 setPage(1);
               }}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
-                foodTypeFilter === "all"
+              className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                productTypeFilter === "all"
                   ? "bg-primary text-primary-foreground shadow-xs"
                   : "border border-border bg-card text-muted-foreground hover:bg-muted"
               }`}
             >
-              All
+              All Types
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setFoodTypeFilter("veg");
-                setPage(1);
-              }}
-              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
-                foodTypeFilter === "veg"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "border border-border bg-card text-emerald-600 hover:bg-emerald-500/10"
-              }`}
-            >
-              <span className="size-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/30" />
-              Veg
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setFoodTypeFilter("non-veg");
-                setPage(1);
-              }}
-              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
-                foodTypeFilter === "non-veg"
-                  ? "bg-rose-600 text-white shadow-xs"
-                  : "border border-border bg-card text-rose-600 hover:bg-rose-500/10"
-              }`}
-            >
-              <span className="size-1.5 rounded-full bg-rose-500 ring-2 ring-rose-500/30" />
-              Non-Veg
-            </button>
+
+            {(availableProductTypes.length > 0
+              ? availableProductTypes
+              : [
+                  { id: "veg", name: "Veg", account_id: "", is_active: true, created_at: "" },
+                  { id: "non-veg", name: "Non-Veg", account_id: "", is_active: true, created_at: "" },
+                ]
+            ).map((pt) => {
+              const isSelected = productTypeFilter.toLowerCase() === pt.name.toLowerCase();
+              return (
+                <button
+                  key={pt.id}
+                  type="button"
+                  onClick={() => {
+                    setProductTypeFilter(pt.name);
+                    setPage(1);
+                  }}
+                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    isSelected
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "border border-border bg-card text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {pt.name.toLowerCase() === "veg" && (
+                    <span className="size-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/30" />
+                  )}
+                  {pt.name.toLowerCase() === "non-veg" && (
+                    <span className="size-1.5 rounded-full bg-rose-500 ring-2 ring-rose-500/30" />
+                  )}
+                  {pt.name}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -631,19 +667,36 @@ export default function ProductsPage() {
                     </div>
                   )}
 
-                  {/* Food Type Badge */}
+                  {/* Product Type Badge */}
                   <div className="absolute left-2.5 top-2.5">
-                    {p.food_type === "veg" ? (
-                      <span className="flex items-center gap-1 rounded-md border border-emerald-500/40 bg-card/90 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600 shadow-xs backdrop-blur-xs">
-                        <span className="size-2 rounded-full bg-emerald-500" />
-                        VEG
-                      </span>
-                    ) : p.food_type === "non-veg" ? (
-                      <span className="flex items-center gap-1 rounded-md border border-rose-500/40 bg-card/90 px-1.5 py-0.5 text-[10px] font-bold text-rose-600 shadow-xs backdrop-blur-xs">
-                        <span className="size-2 rounded-full bg-rose-500" />
-                        NON-VEG
-                      </span>
-                    ) : null}
+                    {(() => {
+                      const t = (p.product_type || p.food_type || "").toLowerCase();
+                      if (t === "veg") {
+                        return (
+                          <span className="flex items-center gap-1 rounded-md border border-emerald-500/40 bg-card/90 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600 shadow-xs backdrop-blur-xs">
+                            <span className="size-2 rounded-full bg-emerald-500" />
+                            VEG
+                          </span>
+                        );
+                      }
+                      if (t === "non-veg") {
+                        return (
+                          <span className="flex items-center gap-1 rounded-md border border-rose-500/40 bg-card/90 px-1.5 py-0.5 text-[10px] font-bold text-rose-600 shadow-xs backdrop-blur-xs">
+                            <span className="size-2 rounded-full bg-rose-500" />
+                            NON-VEG
+                          </span>
+                        );
+                      }
+                      if (p.product_type || p.food_type) {
+                        return (
+                          <span className="flex items-center gap-1 rounded-md border border-border bg-card/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-xs backdrop-blur-xs">
+                            <Tag className="size-2.5 text-primary" />
+                            {p.product_type || p.food_type}
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
 
                   {/* Quick Card Action Buttons */}

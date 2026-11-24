@@ -36,6 +36,7 @@ import {
   SlidersHorizontal,
   Cloud,
   Ticket,
+  Tag,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
 import {
@@ -92,6 +93,7 @@ const commerceNavItems: NavItem[] = [
   { href: "/store", labelKey: "store", icon: Store },
   { href: "/products", labelKey: "products", icon: Layers },
   { href: "/categories", labelKey: "categories", icon: FolderTree },
+  { href: "/product-types", labelKey: "productTypes", icon: Tag },
   { href: "/variants", labelKey: "variants", icon: SlidersHorizontal },
   { href: "/coupons", labelKey: "coupons", icon: Ticket },
   { href: "/integrations", labelKey: "integrations", icon: Cloud },
